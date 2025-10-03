@@ -1,103 +1,106 @@
-import Image from "next/image";
+// app/page.js
+'use client';
+import { useEffect, useRef, useState } from 'react';
+import io from 'socket.io-client';
+import Peer from 'simple-peer';
+import Video from '../components/Video';
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [peers, setPeers] = useState([]);
+  const socketRef = useRef();
+  const userVideo = useRef();
+  const peersRef = useRef([]);
+  const roomID = "test-room"; // 예시 방 ID
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+  useEffect(() => {
+    socketRef.current = io.connect('http://210.114.17.65:8009'); // 시그널링 서버 주소
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
+      if(userVideo.current) {
+        userVideo.current.srcObject = stream;
+      }
+
+      socketRef.current.emit('join room', roomID);
+
+      socketRef.current.on('other user', userID => {
+        const peer = createPeer(userID, socketRef.current.id, stream);
+        peersRef.current.push({
+          peerID: userID,
+          peer,
+        });
+        setPeers(users => [...users, peer]);
+      });
+
+      socketRef.current.on('user joined', payload => {
+        const peer = addPeer(payload.signal, payload.callerID, stream);
+        peersRef.current.push({
+          peerID: payload.callerID,
+          peer,
+        });
+        setPeers(users => [...users, peer]);
+      });
+
+      socketRef.current.on('receiving returned signal', payload => {
+        const item = peersRef.current.find(p => p.peerID === payload.id);
+        item.peer.signal(payload.signal);
+      });
+
+      socketRef.current.on("user left", (id) => {
+        const peerObj = peersRef.current.find(p => p.peerID === id);
+        if(peerObj) {
+          peerObj.peer.destroy();
+        }
+        const newPeers = peersRef.current.filter(p => p.peerID !== id);
+        peersRef.current = newPeers;
+        setPeers(newPeers.map(p => p.peer));
+      });
+    });
+
+    return () => {
+        if(socketRef.current) {
+            socketRef.current.disconnect();
+        }
+        peers.forEach(peer => peer.destroy());
+    }
+  }, []);
+
+  function createPeer(userToSignal, callerID, stream) {
+    const peer = new Peer({
+      initiator: true,
+      trickle: false,
+      stream,
+    });
+
+    peer.on('signal', signal => {
+      socketRef.current.emit('sending signal', { userToSignal, callerID, signal });
+    });
+
+    return peer;
+  }
+
+  function addPeer(incomingSignal, callerID, stream) {
+    const peer = new Peer({
+      initiator: false,
+      trickle: false,
+      stream,
+    });
+
+    peer.on('signal', signal => {
+      socketRef.current.emit('returning signal', { signal, callerID });
+    });
+
+    peer.signal(incomingSignal);
+    return peer;
+  }
+
+  return (
+    <div>
+      <h1>Next.js Video Chat</h1>
+      <video muted ref={userVideo} autoPlay playsInline style={{ width: "300px", margin: "10px" }} />
+      <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+        {peers.map((peer, index) => {
+          return <Video key={index} peer={peer} />;
+        })}
+      </div>
     </div>
   );
 }
