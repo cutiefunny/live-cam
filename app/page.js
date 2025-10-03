@@ -29,12 +29,10 @@ export default function Home() {
   const peersRef = useRef([]);
   const roomID = "test-room"; // 예시 방 ID
   
-  // 💡 Firebase 데이터베이스 참조를 생성합니다.
   const roomRef = ref(database, `rooms/${roomID}`);
-  const [localId, setLocalId] = useState(null); // 자신의 고유 ID
+  const [localId, setLocalId] = useState(null);
 
   useEffect(() => {
-    // 💡 자신의 고유 ID를 생성합니다.
     const id = Math.random().toString(36).substring(2, 15);
     setLocalId(id);
 
@@ -43,21 +41,18 @@ export default function Home() {
         userVideo.current.srcObject = stream;
       }
 
-      // 💡 방에 있는 다른 사용자들에게 내 존재를 알리고 연결을 시작합니다.
       const otherUsersRef = ref(database, `rooms/${roomID}/users`);
       onChildAdded(otherUsersRef, (snapshot) => {
         const otherUserId = snapshot.key;
-        if (otherUserId === id) return; // 자기 자신은 제외
+        if (otherUserId === id) return;
 
         const peer = createPeer(otherUserId, id, stream);
         peersRef.current.push({ peerID: otherUserId, peer });
         setPeers(prevPeers => [...prevPeers, peer]);
       });
       
-      // 💡 내 정보를 방에 추가합니다.
       set(ref(database, `rooms/${roomID}/users/${id}`), true);
 
-      // 💡 시그널링 데이터를 실시간으로 감지합니다.
       const signalsRef = ref(database, `rooms/${roomID}/signals/${id}`);
       onChildAdded(signalsRef, (snapshot) => {
         const { senderId, signal } = snapshot.val();
@@ -68,7 +63,6 @@ export default function Home() {
         if (item) {
           item.peer.signal(signal);
         } else {
-          // 새로운 사용자가 들어왔을 때의 처리 (createPeer가 아닌 addPeer)
           const peer = addPeer(signal, senderId, stream);
           peersRef.current.push({ peerID: senderId, peer });
           setPeers(prevPeers => [...prevPeers, peer]);
@@ -87,10 +81,17 @@ export default function Home() {
       initiator: true,
       trickle: false,
       stream,
+      // ✅ STUN 서버 설정 추가
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' }
+        ],
+      },
     });
 
     peer.on('signal', signal => {
-      // 💡 시그널을 상대방에게 Firebase를 통해 보냅니다.
       const signalRef = push(ref(database, `rooms/${roomID}/signals/${userToSignal}`));
       set(signalRef, { senderId: callerID, signal });
     });
@@ -103,10 +104,17 @@ export default function Home() {
       initiator: false,
       trickle: false,
       stream,
+      // ✅ STUN 서버 설정 추가
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' }
+        ],
+      },
     });
 
     peer.on('signal', signal => {
-      // 💡 응답 시그널을 상대방에게 Firebase를 통해 보냅니다.
       const signalRef = push(ref(database, `rooms/${roomID}/signals/${callerID}`));
       set(signalRef, { senderId: localId, signal });
     });
