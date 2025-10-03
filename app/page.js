@@ -3,29 +3,10 @@
 import { useEffect, useRef, useState } from 'react';
 import Peer from 'simple-peer';
 import Video from '../components/Video';
-// 💡 Firebase 관련 모듈을 가져옵니다.
-import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, onChildAdded, push, set, onChildRemoved, remove } from 'firebase/database';
-// 🔥 Firebase Auth 모듈 추가
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "firebase/auth";
-
-
-// 🚨 아래 Firebase 설정은 개발자님의 프로젝트 설정으로 교체해야 합니다.
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  databaseURL: "https://you-and-me-5059c-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
-};
-
-// Firebase 앱 및 Auth 초기화
-const app = initializeApp(firebaseConfig);
-const database = getDatabase(app);
-const auth = getAuth(app);
+// 🔥 분리된 Firebase 설정 파일을 가져옵니다.
+import { database, auth } from '../lib/firebase';
+import { ref, onChildAdded, push, set, onChildRemoved, remove } from 'firebase/database';
+import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "firebase/auth";
 
 
 export default function Home() {
@@ -48,6 +29,7 @@ export default function Home() {
 
   // 로그아웃 처리
   const handleSignOut = async () => {
+    if (!user) return;
     const userRef = ref(database, `rooms/${roomID}/users/${user.uid}`);
     const signalsRef = ref(database, `rooms/${roomID}/signals/${user.uid}`);
     await remove(userRef);
@@ -75,8 +57,11 @@ export default function Home() {
   useEffect(() => {
     if (!user) return; // 사용자가 로그인하지 않았으면 아무것도 하지 않음
 
+    let localStream = null;
+
     // WebRTC 및 데이터베이스 리스너 설정
     const setupWebRTC = (stream) => {
+      localStream = stream;
       if(userVideo.current) {
         userVideo.current.srcObject = stream;
       }
@@ -144,15 +129,17 @@ export default function Home() {
 
     // 페이지를 떠날 때 정리
     const cleanup = () => {
-        const userRef = ref(database, `rooms/${roomID}/users/${user.uid}`);
-        remove(userRef);
+        if (user) {
+            const userRef = ref(database, `rooms/${roomID}/users/${user.uid}`);
+            remove(userRef);
+        }
     };
 
     window.addEventListener('beforeunload', cleanup);
 
     return () => {
-        if (userVideo.current && userVideo.current.srcObject) {
-            userVideo.current.srcObject.getTracks().forEach(track => track.stop());
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
         }
         cleanup();
         peersRef.current.forEach(p => p.peer.destroy());
@@ -252,3 +239,4 @@ export default function Home() {
     </div>
   );
 }
+
