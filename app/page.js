@@ -13,7 +13,7 @@ export default function Home() {
   const roomID = "test-room"; // 예시 방 ID
 
   useEffect(() => {
-    socketRef.current = io.connect('http://210.114.17.65:8009'); // 시그널링 서버 주소
+    socketRef.current = io.connect('https://musclecat.co.kr'); // 시그널링 서버 주소
     navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
       if(userVideo.current) {
         userVideo.current.srcObject = stream;
