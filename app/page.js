@@ -76,10 +76,13 @@ export default function Home() {
 
         setUsersInRoom(prev => ({...prev, [otherUserId]: userData}));
         
-        const peer = createPeer(otherUserId, user.uid, stream);
-        const peerRefObj = { peerID: otherUserId, peer, photoURL: userData.photoURL };
-        peersRef.current.push(peerRefObj);
-        setPeers(prevPeers => [...prevPeers, peerRefObj]);
+        // 🔥 FIX: 연결 충돌(glare) 방지를 위해 ID를 비교하여 한쪽만 연결을 시작하도록 합니다.
+        if (user.uid > otherUserId) {
+            const peer = createPeer(otherUserId, user.uid, stream);
+            const peerRefObj = { peerID: otherUserId, peer, photoURL: userData.photoURL };
+            peersRef.current.push(peerRefObj);
+            setPeers(prevPeers => [...prevPeers, peerRefObj]);
+        }
       });
       
       onChildRemoved(usersRef, (snapshot) => {
@@ -168,6 +171,10 @@ export default function Home() {
       set(signalRef, { senderId: callerID, signal, senderPhotoURL: user.photoURL });
     });
 
+    // 🔥 ADD: 디버깅을 위한 이벤트 리스너 추가
+    peer.on('connect', () => console.log(`Connection established with ${userToSignal}`));
+    peer.on('error', (err) => console.error(`Connection error with ${userToSignal}:`, err));
+
     return peer;
   }
 
@@ -189,6 +196,10 @@ export default function Home() {
       const signalRef = push(ref(database, `rooms/${roomID}/signals/${callerID}`));
       set(signalRef, { senderId: user.uid, signal, senderPhotoURL: user.photoURL });
     });
+
+    // 🔥 ADD: 디버깅을 위한 이벤트 리스너 추가
+    peer.on('connect', () => console.log(`Connection established with ${callerID}`));
+    peer.on('error', (err) => console.error(`Connection error with ${callerID}:`, err));
 
     peer.signal(incomingSignal);
     return peer;
