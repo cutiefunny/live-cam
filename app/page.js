@@ -5,7 +5,10 @@ import Peer from 'simple-peer';
 import Video from '../components/Video';
 // 💡 Firebase 관련 모듈을 가져옵니다.
 import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, onChildAdded, push, set } from 'firebase/database';
+import { getDatabase, ref, onChildAdded, push, set, onChildRemoved, remove } from 'firebase/database';
+// 🔥 Firebase Auth 모듈 추가
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "firebase/auth";
+
 
 // 🚨 아래 Firebase 설정은 개발자님의 프로젝트 설정으로 교체해야 합니다.
 const firebaseConfig = {
@@ -19,69 +22,151 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
-// Firebase 앱 초기화
+// Firebase 앱 및 Auth 초기화
 const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
+const auth = getAuth(app);
+
 
 export default function Home() {
+  const [user, setUser] = useState(null); // 사용자 정보 상태
   const [peers, setPeers] = useState([]);
   const userVideo = useRef();
   const peersRef = useRef([]);
+  const [usersInRoom, setUsersInRoom] = useState({});
   const roomID = "test-room"; // 예시 방 ID
   
-  const roomRef = ref(database, `rooms/${roomID}`);
-  const [localId, setLocalId] = useState(null);
+  // Google 로그인 처리
+  const signInWithGoogle = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error("Authentication error:", error);
+    }
+  };
+
+  // 로그아웃 처리
+  const handleSignOut = async () => {
+    const userRef = ref(database, `rooms/${roomID}/users/${user.uid}`);
+    const signalsRef = ref(database, `rooms/${roomID}/signals/${user.uid}`);
+    await remove(userRef);
+    await remove(signalsRef);
+    await signOut(auth);
+    setUser(null);
+    setPeers([]);
+    peersRef.current = [];
+    if (userVideo.current && userVideo.current.srcObject) {
+        userVideo.current.srcObject.getTracks().forEach(track => track.stop());
+        userVideo.current.srcObject = null;
+    }
+  };
+
+
+  // 인증 상태 감시
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
+
 
   useEffect(() => {
-    const id = Math.random().toString(36).substring(2, 15);
-    setLocalId(id);
+    if (!user) return; // 사용자가 로그인하지 않았으면 아무것도 하지 않음
 
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
+    // WebRTC 및 데이터베이스 리스너 설정
+    const setupWebRTC = (stream) => {
       if(userVideo.current) {
         userVideo.current.srcObject = stream;
       }
+      
+      const usersRef = ref(database, `rooms/${roomID}/users`);
 
-      const otherUsersRef = ref(database, `rooms/${roomID}/users`);
-      onChildAdded(otherUsersRef, (snapshot) => {
+      // 방에 있는 다른 사용자 정보 가져오기
+      onChildAdded(usersRef, (snapshot) => {
         const otherUserId = snapshot.key;
-        if (otherUserId === id) return;
+        const userData = snapshot.val();
+        if (otherUserId === user.uid) return;
 
-        const peer = createPeer(otherUserId, id, stream);
-        peersRef.current.push({ peerID: otherUserId, peer });
-        setPeers(prevPeers => [...prevPeers, peer]);
+        setUsersInRoom(prev => ({...prev, [otherUserId]: userData}));
+        
+        const peer = createPeer(otherUserId, user.uid, stream);
+        const peerRefObj = { peerID: otherUserId, peer, photoURL: userData.photoURL };
+        peersRef.current.push(peerRefObj);
+        setPeers(prevPeers => [...prevPeers, peerRefObj]);
       });
       
-      set(ref(database, `rooms/${roomID}/users/${id}`), true);
+      onChildRemoved(usersRef, (snapshot) => {
+          const removedUserId = snapshot.key;
+          setUsersInRoom(prev => {
+            const newUsers = {...prev};
+            delete newUsers[removedUserId];
+            return newUsers;
+          });
+          const item = peersRef.current.find(p => p.peerID === removedUserId);
+          if (item) {
+              item.peer.destroy();
+          }
+          const newPeers = peersRef.current.filter(p => p.peerID !== removedUserId);
+          peersRef.current = newPeers;
+          setPeers(newPeers);
+      });
 
-      const signalsRef = ref(database, `rooms/${roomID}/signals/${id}`);
+      // 현재 사용자 정보를 데이터베이스에 추가
+      set(ref(database, `rooms/${roomID}/users/${user.uid}`), { photoURL: user.photoURL, displayName: user.displayName });
+
+      // Signal 리스너 설정
+      const signalsRef = ref(database, `rooms/${roomID}/signals/${user.uid}`);
       onChildAdded(signalsRef, (snapshot) => {
-        const { senderId, signal } = snapshot.val();
-
-        if (senderId === id) return;
+        const { senderId, signal, senderPhotoURL } = snapshot.val();
+        if (senderId === user.uid) return;
 
         const item = peersRef.current.find(p => p.peerID === senderId);
         if (item) {
           item.peer.signal(signal);
         } else {
           const peer = addPeer(signal, senderId, stream);
-          peersRef.current.push({ peerID: senderId, peer });
-          setPeers(prevPeers => [...prevPeers, peer]);
+          const peerRefObj = { peerID: senderId, peer, photoURL: senderPhotoURL };
+          peersRef.current.push(peerRefObj);
+          setPeers(prevPeers => [...prevPeers, peerRefObj]);
         }
+        remove(snapshot.ref); // Signal 처리 후 삭제
       });
+    };
+    
+    // 미디어 스트림 가져오기
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
+      setupWebRTC(stream);
+    }).catch(err => {
+        console.error("Failed to get media stream", err);
     });
 
+    // 페이지를 떠날 때 정리
+    const cleanup = () => {
+        const userRef = ref(database, `rooms/${roomID}/users/${user.uid}`);
+        remove(userRef);
+    };
+
+    window.addEventListener('beforeunload', cleanup);
+
     return () => {
-        peers.forEach(peer => peer.destroy());
+        if (userVideo.current && userVideo.current.srcObject) {
+            userVideo.current.srcObject.getTracks().forEach(track => track.stop());
+        }
+        cleanup();
+        peersRef.current.forEach(p => p.peer.destroy());
+        peersRef.current = [];
+        setPeers([]);
+        window.removeEventListener('beforeunload', cleanup);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user]);
 
   function createPeer(userToSignal, callerID, stream) {
     const peer = new Peer({
       initiator: true,
       trickle: false,
       stream,
-      // ✅ STUN 서버 설정 추가
       config: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
@@ -93,7 +178,7 @@ export default function Home() {
 
     peer.on('signal', signal => {
       const signalRef = push(ref(database, `rooms/${roomID}/signals/${userToSignal}`));
-      set(signalRef, { senderId: callerID, signal });
+      set(signalRef, { senderId: callerID, signal, senderPhotoURL: user.photoURL });
     });
 
     return peer;
@@ -104,7 +189,6 @@ export default function Home() {
       initiator: false,
       trickle: false,
       stream,
-      // ✅ STUN 서버 설정 추가
       config: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
@@ -116,20 +200,53 @@ export default function Home() {
 
     peer.on('signal', signal => {
       const signalRef = push(ref(database, `rooms/${roomID}/signals/${callerID}`));
-      set(signalRef, { senderId: localId, signal });
+      set(signalRef, { senderId: user.uid, signal, senderPhotoURL: user.photoURL });
     });
 
     peer.signal(incomingSignal);
     return peer;
   }
 
+  if (!user) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <button onClick={signInWithGoogle} style={{ padding: '10px 20px', fontSize: '16px', cursor: 'pointer' }}>
+          Login with Google
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <h1>Next.js Video Chat with Firebase</h1>
-      <video muted ref={userVideo} autoPlay playsInline style={{ width: "300px", margin: "10px" }} />
+      <div style={{ padding: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1>Next.js Video Chat</h1>
+        <button onClick={handleSignOut} style={{ padding: '8px 15px' }}>Logout</button>
+      </div>
+
+      <div style={{ position: 'relative', width: "300px", margin: "10px", backgroundColor: '#333', borderRadius: '8px', overflow: 'hidden' }}>
+        <video muted ref={userVideo} autoPlay playsInline style={{ width: "100%", display: 'block' }} />
+        {user.photoURL && (
+            <img
+            src={user.photoURL}
+            alt="My Profile"
+            style={{
+                position: 'absolute',
+                top: '10px',
+                right: '10px',
+                width: '50px',
+                height: '50px',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: '2px solid white'
+            }}
+            />
+        )}
+      </div>
+      
       <div style={{ display: 'flex', flexWrap: 'wrap' }}>
-        {peers.map((peer, index) => {
-          return <Video key={index} peer={peer} />;
+        {peers.map(({ peerID, peer, photoURL }) => {
+          return <Video key={peerID} peer={peer} photoURL={photoURL} />;
         })}
       </div>
     </div>

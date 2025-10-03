@@ -1,7 +1,7 @@
 // components/Video.js
 import { useEffect, useRef } from 'react';
 
-const Video = ({ peer }) => {
+const Video = ({ peer, photoURL }) => {
   const ref = useRef();
 
   useEffect(() => {
@@ -25,9 +25,28 @@ const Video = ({ peer }) => {
     };
   }, [peer]);
 
-  // ✅ 상대방 비디오는 소리가 들려야 하므로 muted 속성은 제거하는 것이 맞습니다.
-  // 다만 자동재생 정책으로 인해 소리가 안나올 수 있습니다.
-  return <video playsInline autoPlay ref={ref} style={{ width: "300px", margin: "10px" }} />;
+  return (
+    <div style={{ position: 'relative', width: "300px", margin: "10px", backgroundColor: '#333', borderRadius: '8px', overflow: 'hidden' }}>
+        <video playsInline autoPlay ref={ref} style={{ width: "100%", display: 'block' }} />
+        {photoURL && (
+            <img
+            src={photoURL}
+            alt="Profile"
+            style={{
+                position: 'absolute',
+                top: '10px',
+                right: '10px',
+                width: '50px',
+                height: '50px',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: '2px solid white',
+                boxShadow: '0 0 5px rgba(0,0,0,0.5)'
+            }}
+            />
+        )}
+    </div>
+  );
 };
 
 export default Video;
