@@ -16,10 +16,19 @@ export default function Room() {
   const userVideo = useRef();
   
   const [localStream, setLocalStream] = useState(null);
-  const [mediaStatus, setMediaStatus] = useState('loading');
+  const [mediaStatus, setMediaStatus] = useState('loading'); 
   
   const { createPeer, addPeer } = useWebRTC(user, roomId);
-  const { peers } = useRoom(roomId, user, localStream, createPeer, addPeer);
+  
+  // localStream이 준비되거나 관전 모드가 확정된 후에만 useRoom 훅이 실행되도록 수정합니다.
+  const { peers } = useRoom(
+    roomId,
+    user,
+    // mediaStatus가 'loading'일 때는 null을 전달하여 훅 실행을 막습니다.
+    mediaStatus !== 'loading' ? localStream : undefined,
+    createPeer,
+    addPeer
+  );
   
   useEffect(() => {
     if (!isAuthLoading && !user) {
