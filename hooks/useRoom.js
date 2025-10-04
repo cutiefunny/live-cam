@@ -8,7 +8,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
   const peersRef = useRef([]);
 
   useEffect(() => {
-    // 👇 localStream이 없어도 user와 roomID만 있으면 실행되도록 수정
     if (!user || !roomID) return;
 
     const usersRef = ref(database, `rooms/${roomID}/users`);
@@ -17,10 +16,12 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
     const handleUserJoined = (snapshot) => {
       const otherUserId = snapshot.key;
       if (otherUserId === user.uid) return;
+      
+      // 👇 FIX: 이미 연결 중인 사용자인지 확인하여 중복 생성을 방지합니다.
+      if (peersRef.current.some(p => p.peerID === otherUserId)) return;
 
       const userData = snapshot.val();
       if (user.uid > otherUserId) {
-        // localStream이 null이더라도 createPeer를 호출 (관전자)
         const peer = createPeer(otherUserId, localStream);
         const peerRefObj = { peerID: otherUserId, peer, photoURL: userData.photoURL, displayName: userData.displayName };
         peersRef.current.push(peerRefObj);
@@ -45,7 +46,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
       if (item) {
         item.peer.signal(signal);
       } else {
-        // localStream이 null이더라도 addPeer를 호출 (관전자)
         const peer = addPeer(signal, senderId, localStream);
         const peerRefObj = { peerID: senderId, peer, photoURL: senderPhotoURL, displayName: senderDisplayName };
         peersRef.current.push(peerRefObj);

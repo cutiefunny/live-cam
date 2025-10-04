@@ -4,17 +4,26 @@ import Peer from 'simple-peer';
 import { push, set, ref } from 'firebase/database';
 import { database } from '@/lib/firebase';
 
+// STUN 서버와 TURN 서버를 함께 설정합니다.
 const ICE_SERVERS = {
   iceServers: [
+    // STUN 서버는 그대로 사용합니다.
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' }
+    
+    // 👇 FIX: 여기에 개발자님의 TURN 서버 정보를 추가하세요.
+    /*
+    {
+      urls: 'turn:YOUR_TURN_SERVER_ADDRESS:PORT',
+      username: 'YOUR_USERNAME',
+      credential: 'YOUR_PASSWORD',
+    },
+    */
   ],
 };
 
 export function useWebRTC(user, roomID) {
-  const peersRef = useRef([]);
-
+  // ... (createPeer, addPeer 함수는 변경 사항 없습니다) ...
   const createPeer = useCallback((otherUserID, stream) => {
     const peer = new Peer({
       initiator: true,
@@ -54,5 +63,5 @@ export function useWebRTC(user, roomID) {
     return peer;
   }, [user, roomID]);
   
-  return { createPeer, addPeer, peersRef };
+  return { createPeer, addPeer };
 }
