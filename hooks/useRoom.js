@@ -1,6 +1,7 @@
 // hooks/useRoom.js
 import { useState, useEffect, useRef } from 'react';
-import { ref, onChildAdded, onChildRemoved, set, remove, onDisconnect, get, child } from 'firebase/database';
+// 👇 FIX: `off` 함수를 firebase/database에서 import 합니다.
+import { ref, onChildAdded, onChildRemoved, set, remove, onDisconnect, get, child, off } from 'firebase/database';
 import { database } from '@/lib/firebase';
 
 export function useRoom(roomID, user, localStream, createPeer, addPeer) {
@@ -12,8 +13,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
   }, [peers]);
 
   useEffect(() => {
-    // localStream이 undefined이면(초기 로딩 상태) 아무것도 하지 않고,
-    // null(관전모드) 또는 스트림 객체가 있을 때만 로직을 실행합니다.
     if (!user || !roomID || localStream === undefined) {
       return;
     }
@@ -98,9 +97,10 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
     const signalListener = onChildAdded(signalsRef, handleSignal);
 
     return () => {
-      usersRef.off('child_added', userJoinedListener);
-      usersRef.off('child_removed', userLeftListener);
-      signalsRef.off('child_added', signalListener);
+      // 👇 FIX: Firebase v9 SDK의 올바른 리스너 제거 방식으로 수정합니다.
+      off(usersRef, 'child_added', userJoinedListener);
+      off(usersRef, 'child_removed', userLeftListener);
+      off(signalsRef, 'child_added', signalListener);
 
       remove(currentUserRef);
       
