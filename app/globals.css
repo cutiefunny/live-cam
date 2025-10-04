@@ -1,0 +1,19 @@
+/* app/globals.css */
+body {
+  background-color: #111827; /* bg-gray-900 */
+  color: #f9fafb; /* text-white */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  transition: background-color 0.2s ease-in-out;
+}
+
+input {
+  border-style: solid;
+}

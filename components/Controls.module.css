@@ -1,0 +1,36 @@
+/* components/Controls.module.css */
+.container {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.button {
+  padding: 0.75rem;
+  border-radius: 9999px;
+  transition: background-color 0.2s ease-in-out;
+}
+
+.button:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px #111827, 0 0 0 4px white;
+}
+
+.on {
+  background-color: #374151; /* bg-gray-700 */
+}
+.on:hover {
+  background-color: #4b5563; /* hover:bg-gray-600 */
+}
+
+.off {
+  background-color: #dc2626; /* bg-red-600 */
+}
+.off:hover {
+  background-color: #b91c1c; /* hover:bg-red-700 */
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

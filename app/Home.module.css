@@ -1,0 +1,113 @@
+/* app/Home.module.css */
+.main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+.loginContainer {
+  text-align: center;
+}
+
+.loginTitle {
+  font-size: 2.25rem;
+  font-weight: bold;
+  margin-bottom: 1rem;
+}
+
+.loginDescription {
+  color: #9ca3af; /* text-gray-400 */
+  margin-bottom: 2rem;
+}
+
+.loginButton {
+  padding: 0.75rem 1.5rem;
+  background-color: #2563eb; /* bg-blue-600 */
+  border-radius: 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: white;
+}
+.loginButton:hover {
+  background-color: #1d4ed8; /* hover:bg-blue-700 */
+}
+
+.lobbyContainer {
+  width: 100%;
+  max-width: 28rem;
+  background-color: #1f2937; /* bg-gray-800 */
+  padding: 2rem;
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+  text-align: center;
+}
+
+.lobbyTitle {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 1.5rem;
+}
+
+.createButton {
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  background-color: #4f46e5; /* bg-indigo-600 */
+  color: white;
+  border-radius: 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+.createButton:hover {
+  background-color: #4338ca; /* hover:bg-indigo-700 */
+}
+
+.joinForm {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.joinInput {
+  flex-grow: 1;
+  padding: 0.75rem 1rem;
+  background-color: #374151; /* bg-gray-700 */
+  border: 1px solid #4b5563; /* border-gray-600 */
+  border-radius: 0.5rem;
+  color: white;
+}
+.joinInput:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px #4f46e5; /* ring-2 focus:ring-indigo-500 */
+}
+
+.joinButton {
+  padding: 0.75rem 1.5rem;
+  background-color: #4b5563; /* bg-gray-600 */
+  color: white;
+  border-radius: 0.5rem;
+  font-weight: 600;
+}
+.joinButton:hover {
+  background-color: #374151; /* hover:bg-gray-700 */
+}
+.joinButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.divider {
+    display: flex;
+    align-items: center;
+    margin: 1rem 0;
+}
+.divider hr {
+    width: 100%;
+    border-color: #4b5563; /* border-gray-600 */
+}
+.divider span {
+    padding: 0 0.5rem;
+    color: #9ca3af; /* text-gray-400 */
+}
