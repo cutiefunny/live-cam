@@ -8,7 +8,6 @@ const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    // TURN 서버가 있다면 여기에 추가하세요.
   ],
 };
 
@@ -23,13 +22,11 @@ export function useWebRTC(user, roomID) {
 
     peer.on('signal', (signal) => {
       const signalRef = push(ref(database, `rooms/${roomID}/signals/${otherUserID}`));
-      // 👇 FIX: senderDisplayName 추가
       set(signalRef, { senderId: user.uid, signal, senderPhotoURL: user.photoURL, senderDisplayName: user.displayName });
     });
     
-    peer.on('stream', () => console.log(`[${user.displayName}] Received stream from ${otherUserID}`));
-    peer.on('connect', () => console.log(`Connection established with ${otherUserID}`));
-    peer.on('error', (err) => console.error(`Connection error with ${otherUserID}:`, err));
+    peer.on('connect', () => console.log(`[${user.displayName}] Connection established with ${otherUserID}`));
+    peer.on('error', (err) => console.error(`[${user.displayName}] Connection error with ${otherUserID}:`, err));
 
     return peer;
   }, [user, roomID]);
@@ -44,13 +41,11 @@ export function useWebRTC(user, roomID) {
 
     peer.on('signal', (signal) => {
       const signalRef = push(ref(database, `rooms/${roomID}/signals/${senderId}`));
-      // 👇 FIX: senderDisplayName 추가
       set(signalRef, { senderId: user.uid, signal, senderPhotoURL: user.photoURL, senderDisplayName: user.displayName });
     });
 
-    peer.on('stream', () => console.log(`[${user.displayName}] Received stream from ${senderId}`));
-    peer.on('connect', () => console.log(`Connection established with ${senderId}`));
-    peer.on('error', (err) => console.error(`Connection error with ${senderId}:`, err));
+    peer.on('connect', () => console.log(`[${user.displayName}] Connection established with ${senderId}`));
+    peer.on('error', (err) => console.error(`[${user.displayName}] Connection error with ${senderId}:`, err));
 
     peer.signal(incomingSignal);
     return peer;
