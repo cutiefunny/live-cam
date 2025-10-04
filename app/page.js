@@ -5,7 +5,8 @@ import Peer from 'simple-peer';
 import Video from '../components/Video';
 // 🔥 분리된 Firebase 설정 파일을 가져옵니다.
 import { database, auth } from '../lib/firebase';
-import { ref, onChildAdded, push, set, onChildRemoved, remove } from 'firebase/database';
+// 🔥 'serverTimestamp'를 추가로 import하여 입장 시간을 기록합니다.
+import { ref, onChildAdded, push, set, onChildRemoved, remove, get, serverTimestamp } from 'firebase/database';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "firebase/auth";
 
 
@@ -16,14 +17,42 @@ export default function Home() {
   const peersRef = useRef([]);
   const [usersInRoom, setUsersInRoom] = useState({});
   const roomID = "test-room"; // 예시 방 ID
+  const [errorMessage, setErrorMessage] = useState('');
+  const [hasCamera, setHasCamera] = useState(true);
   
   // Google 로그인 처리
   const signInWithGoogle = async () => {
-    const provider = new GoogleAuthProvider();
+    setErrorMessage('');
+    const roomUsersRef = ref(database, `rooms/${roomID}/users`);
     try {
-      await signInWithPopup(auth, provider);
+        const snapshot = await get(roomUsersRef);
+        
+        // 🔥 FIX: 방이 가득 찼을 때, 가장 오래된 사용자를 내보내는 '큐' 방식으로 변경
+        if (snapshot.exists() && snapshot.size >= 2) {
+            let oldestUid = null;
+            let oldestTimestamp = Infinity;
+            snapshot.forEach((childSnapshot) => {
+                const userData = childSnapshot.val();
+                if (userData.joinedAt < oldestTimestamp) {
+                    oldestTimestamp = userData.joinedAt;
+                    oldestUid = childSnapshot.key;
+                }
+            });
+
+            if (oldestUid) {
+                console.log(`Room is full. Removing oldest user: ${oldestUid}`);
+                const oldestUserRef = ref(database, `rooms/${roomID}/users/${oldestUid}`);
+                const oldestUserSignalsRef = ref(database, `rooms/${roomID}/signals/${oldestUid}`);
+                await remove(oldestUserRef);
+                await remove(oldestUserSignalsRef);
+            }
+        }
+
+        const provider = new GoogleAuthProvider();
+        await signInWithPopup(auth, provider);
     } catch (error) {
-      console.error("Authentication error:", error);
+        console.error("Authentication or room management error:", error);
+        setErrorMessage("오류가 발생했습니다. 다시 시도해주세요.");
     }
   };
 
@@ -55,20 +84,18 @@ export default function Home() {
 
 
   useEffect(() => {
-    if (!user) return; // 사용자가 로그인하지 않았으면 아무것도 하지 않음
+    if (!user) return;
 
     let localStream = null;
 
-    // WebRTC 및 데이터베이스 리스너 설정
-    const setupWebRTC = (stream) => {
+    const setupListenersAndJoinRoom = (stream) => {
       localStream = stream;
-      if(userVideo.current) {
+      if (userVideo.current) {
         userVideo.current.srcObject = stream;
       }
       
       const usersRef = ref(database, `rooms/${roomID}/users`);
 
-      // 방에 있는 다른 사용자 정보 가져오기
       onChildAdded(usersRef, (snapshot) => {
         const otherUserId = snapshot.key;
         const userData = snapshot.val();
@@ -76,7 +103,6 @@ export default function Home() {
 
         setUsersInRoom(prev => ({...prev, [otherUserId]: userData}));
         
-        // 🔥 FIX: 연결 충돌(glare) 방지를 위해 ID를 비교하여 한쪽만 연결을 시작하도록 합니다.
         if (user.uid > otherUserId) {
             const peer = createPeer(otherUserId, user.uid, stream);
             const peerRefObj = { peerID: otherUserId, peer, photoURL: userData.photoURL };
@@ -101,10 +127,13 @@ export default function Home() {
           setPeers(newPeers);
       });
 
-      // 현재 사용자 정보를 데이터베이스에 추가
-      set(ref(database, `rooms/${roomID}/users/${user.uid}`), { photoURL: user.photoURL, displayName: user.displayName });
+      // 🔥 FIX: 사용자가 방에 참여할 때, 서버 시간을 기준으로 'joinedAt' 타임스탬프를 기록
+      set(ref(database, `rooms/${roomID}/users/${user.uid}`), { 
+          photoURL: user.photoURL, 
+          displayName: user.displayName,
+          joinedAt: serverTimestamp() 
+      });
 
-      // Signal 리스너 설정
       const signalsRef = ref(database, `rooms/${roomID}/signals/${user.uid}`);
       onChildAdded(signalsRef, (snapshot) => {
         const { senderId, signal, senderPhotoURL } = snapshot.val();
@@ -119,18 +148,35 @@ export default function Home() {
           peersRef.current.push(peerRefObj);
           setPeers(prevPeers => [...prevPeers, peerRefObj]);
         }
-        remove(snapshot.ref); // Signal 처리 후 삭제
+        remove(snapshot.ref);
       });
     };
     
-    // 미디어 스트림 가져오기
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
-      setupWebRTC(stream);
-    }).catch(err => {
-        console.error("Failed to get media stream", err);
-    });
+    const getMedia = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            setHasCamera(true);
+            setupListenersAndJoinRoom(stream);
+        } catch (err) {
+            console.error("Error getting media stream:", err);
+            if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                setHasCamera(false);
+                try {
+                    const audioStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+                    setupListenersAndJoinRoom(audioStream);
+                } catch (audioErr) {
+                    console.error("Error getting audio stream:", audioErr);
+                    setErrorMessage("카메라 또는 마이크를 찾을 수 없습니다. 장치 설정을 확인해주세요.");
+                }
+            } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                setHasCamera(false);
+                setErrorMessage("카메라 및 마이크 접근 권한이 거부되었습니다.");
+            }
+        }
+    };
 
-    // 페이지를 떠날 때 정리
+    getMedia();
+
     const cleanup = () => {
         if (user) {
             const userRef = ref(database, `rooms/${roomID}/users/${user.uid}`);
@@ -171,7 +217,6 @@ export default function Home() {
       set(signalRef, { senderId: callerID, signal, senderPhotoURL: user.photoURL });
     });
 
-    // 🔥 ADD: 디버깅을 위한 이벤트 리스너 추가
     peer.on('connect', () => console.log(`Connection established with ${userToSignal}`));
     peer.on('error', (err) => console.error(`Connection error with ${userToSignal}:`, err));
 
@@ -197,7 +242,6 @@ export default function Home() {
       set(signalRef, { senderId: user.uid, signal, senderPhotoURL: user.photoURL });
     });
 
-    // 🔥 ADD: 디버깅을 위한 이벤트 리스너 추가
     peer.on('connect', () => console.log(`Connection established with ${callerID}`));
     peer.on('error', (err) => console.error(`Connection error with ${callerID}:`, err));
 
@@ -207,10 +251,11 @@ export default function Home() {
 
   if (!user) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
         <button onClick={signInWithGoogle} style={{ padding: '10px 20px', fontSize: '16px', cursor: 'pointer' }}>
-          Login with Google
+          Google 계정으로 로그인하여 통화 참여
         </button>
+        {errorMessage && <p style={{ color: 'red', marginTop: '15px' }}>{errorMessage}</p>}
       </div>
     );
   }
@@ -218,16 +263,22 @@ export default function Home() {
   return (
     <div>
       <div style={{ padding: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>Next.js Video Chat</h1>
-        <button onClick={handleSignOut} style={{ padding: '8px 15px' }}>Logout</button>
+        <h1>Next.js 영상 채팅</h1>
+        <button onClick={handleSignOut} style={{ padding: '8px 15px' }}>로그아웃</button>
       </div>
 
       <div style={{ position: 'relative', width: "300px", margin: "10px", backgroundColor: '#333', borderRadius: '8px', overflow: 'hidden' }}>
-        <video muted ref={userVideo} autoPlay playsInline style={{ width: "100%", display: 'block' }} />
+        {hasCamera ? (
+            <video muted ref={userVideo} autoPlay playsInline style={{ width: "100%", display: 'block' }} />
+        ) : (
+            <div style={{ width: '300px', height: '225px', backgroundColor: '#2C2C2C', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <img src="/images/icon-512.png" alt="카메라를 사용할 수 없음" style={{ width: '100px', height: '100px', opacity: 0.6 }} />
+            </div>
+        )}
         {user.photoURL && (
             <img
             src={user.photoURL}
-            alt="My Profile"
+            alt="내 프로필"
             style={{
                 position: 'absolute',
                 top: '10px',

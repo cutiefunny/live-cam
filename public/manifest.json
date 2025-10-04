@@ -1,0 +1,35 @@
+{
+    "name": "취향캠톡",
+    "short_name": "취향캠톡",
+    "description": "실시간 영상 채팅 서비스",
+    "orientation": "portrait",
+    "start_url": "/",
+    "display": "standalone",
+    "theme_color": "#000000",
+    "background_color": "#ffffff",
+    "icons": [
+      {
+        "src": "/images/icon.png",
+        "sizes": "120x120",
+        "type": "image/png"
+      },
+      {
+        "src": "/images/icon-144.png",
+        "sizes": "144x144",
+        "type": "image/png"
+      },
+      {
+        "src": "/images/icon-512.png",
+        "sizes": "512x512",
+        "type": "image/png"
+      }
+    ],
+    "screenshots": [
+      {
+        "src":"/images/screenshot.png",
+        "sizes":"606x1280",
+        "type":"image/png",
+        "description":"홈 화면"
+      }
+    ]
+}
