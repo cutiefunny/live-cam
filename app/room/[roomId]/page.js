@@ -18,14 +18,14 @@ export default function Room() {
   const [localStream, setLocalStream] = useState(null);
   const [mediaStatus, setMediaStatus] = useState('loading'); 
   
-  const { createPeer, addPeer } = useWebRTC(user, roomId);
+  // 👇 FIX: useWebRTC 훅에서 iceServersReady 상태를 받아옵니다.
+  const { createPeer, addPeer, iceServersReady } = useWebRTC(user, roomId);
   
-  // localStream이 준비되거나 관전 모드가 확정된 후에만 useRoom 훅이 실행되도록 수정합니다.
   const { peers } = useRoom(
     roomId,
     user,
-    // mediaStatus가 'loading'일 때는 null을 전달하여 훅 실행을 막습니다.
-    mediaStatus !== 'loading' ? localStream : undefined,
+    // mediaStatus가 'ready'이고 iceServers가 준비되었을 때만 stream을 전달합니다.
+    mediaStatus !== 'loading' && iceServersReady ? localStream : undefined,
     createPeer,
     addPeer
   );
@@ -62,7 +62,8 @@ export default function Room() {
       router.push('/');
   }
 
-  if (isAuthLoading || !user || mediaStatus === 'loading') {
+  // 👇 FIX: iceServers가 준비될 때까지 로딩 상태를 유지합니다.
+  if (isAuthLoading || !user || mediaStatus === 'loading' || !iceServersReady) {
       return (
         <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh'}}>
             <div style={{fontSize: '1.25rem'}}>Connecting...</div>
