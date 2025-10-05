@@ -20,6 +20,17 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
     const usersRef = child(roomRef, 'users');
     const currentUserRef = child(usersRef, user.uid);
     const signalsRef = ref(database, `rooms/${roomID}/signals/${user.uid}`);
+    
+    const creatorRef = ref(database, `creators/${user.uid}`);
+    let isCurrentUserCreator = false;
+    get(creatorRef).then(snapshot => {
+        if(snapshot.exists()) {
+            isCurrentUserCreator = true;
+            set(child(creatorRef, 'status'), 'busy');
+            // 비정상 종료 시 오프라인으로 처리
+            onDisconnect(child(creatorRef, 'status')).set('offline');
+        }
+    });
 
     const handleUserJoined = (snapshot) => {
       const otherUserId = snapshot.key;
@@ -32,7 +43,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
             return currentPeers;
           }
           const peer = createPeer(otherUserId, localStream);
-          if (!peer) return currentPeers; // Peer 생성 실패 시 추가하지 않음
+          if (!peer) return currentPeers;
           const newPeerObj = {
             peerID: otherUserId,
             peer,
@@ -64,7 +75,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
               return currentPeers;
             }
             const peer = addPeer(signal, senderId, localStream);
-            if (!peer) return currentPeers; // Peer 생성 실패 시 추가하지 않음
+            if (!peer) return currentPeers;
             const newPeerObj = {
               peerID: senderId,
               peer,
@@ -80,10 +91,8 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
 
     const handleUserLeft = (snapshot) => {
       const removedUserId = snapshot.key;
-      
       const peerToRemove = peersRef.current.find(p => p.peerID === removedUserId);
       
-      // 👇 FIX: peerToRemove.peer가 null이 아닌지 확인하는 방어 코드 추가
       if (peerToRemove && peerToRemove.peer && !peerToRemove.peer.destroyed) {
           peerToRemove.peer.destroy();
       }
@@ -105,8 +114,14 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
 
       remove(currentUserRef);
       
+      if (isCurrentUserCreator) {
+          // 방을 나갈 때 설정했던 onDisconnect는 취소하고,
+          onDisconnect(child(creatorRef, 'status')).cancel();
+          // 다시 'online' 상태로 되돌립니다.
+          set(child(creatorRef, 'status'), 'online');
+      }
+      
       peersRef.current.forEach(({ peer }) => {
-        // 👇 FIX: peer가 null이 아닌지 확인
         if (peer && !peer.destroyed) {
           peer.destroy();
         }
@@ -121,7 +136,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
             console.log(`Room ${roomID} was empty and has been deleted.`);
           }
         });
-      }, 500); 
+      }, 5000); 
     };
   }, [roomID, user, localStream, createPeer, addPeer]);
   

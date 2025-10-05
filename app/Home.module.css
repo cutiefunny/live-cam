@@ -37,18 +37,26 @@
 
 .lobbyContainer {
   width: 100%;
-  max-width: 28rem;
+  max-width: 32rem; /* Increased max-width */
   background-color: #1f2937; /* bg-gray-800 */
   padding: 2rem;
   border-radius: 0.75rem;
   box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
-  text-align: center;
 }
 
-.lobbyTitle {
-  font-size: 1.5rem;
-  font-weight: bold;
+.userInfo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #374151; /* border-gray-700 */
+}
+
+.userAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
 }
 
 .createButton {
@@ -57,57 +65,142 @@
   background-color: #4f46e5; /* bg-indigo-600 */
   color: white;
   border-radius: 0.5rem;
-  font-size: 1.125rem;
+  font-size: 1rem;
   font-weight: 600;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
 }
 .createButton:hover {
   background-color: #4338ca; /* hover:bg-indigo-700 */
 }
 
-.joinForm {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.joinInput {
-  flex-grow: 1;
-  padding: 0.75rem 1rem;
-  background-color: #374151; /* bg-gray-700 */
-  border: 1px solid #4b5563; /* border-gray-600 */
-  border-radius: 0.5rem;
-  color: white;
-}
-.joinInput:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px #4f46e5; /* ring-2 focus:ring-indigo-500 */
-}
-
-.joinButton {
+.goOfflineButton {
+  width: 100%;
   padding: 0.75rem 1.5rem;
-  background-color: #4b5563; /* bg-gray-600 */
+  background-color: #dc2626; /* bg-red-600 */
+  color: white;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+}
+
+.goOfflineButton:hover {
+  background-color: #b91c1c; /* hover:bg-red-700 */
+}
+
+.creatorListTitle {
+  font-size: 1.25rem;
+  font-weight: bold;
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+  text-align: left;
+}
+
+.creatorList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.creatorItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #374151; /* bg-gray-700 */
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+}
+
+.creatorInfo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.creatorAvatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 9999px;
+}
+
+.callButton {
+  padding: 0.5rem 1rem;
+  background-color: #16a34a; /* bg-green-600 */
   color: white;
   border-radius: 0.5rem;
   font-weight: 600;
+  font-size: 0.875rem;
 }
-.joinButton:hover {
-  background-color: #374151; /* hover:bg-gray-700 */
+.callButton:hover {
+  background-color: #15803d; /* hover:bg-green-700 */
 }
-.joinButton:disabled {
-  opacity: 0.5;
+.callButton:disabled {
+  background-color: #4b5563; /* bg-gray-600 */
   cursor: not-allowed;
+  opacity: 0.7;
 }
 
-.divider {
+/* 통화 수신 모달 스타일 */
+.modalOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
     display: flex;
     align-items: center;
-    margin: 1rem 0;
+    justify-content: center;
+    z-index: 1000;
 }
-.divider hr {
-    width: 100%;
-    border-color: #4b5563; /* border-gray-600 */
+
+.modalContent {
+    background-color: #1f2937; /* bg-gray-800 */
+    padding: 2rem;
+    border-radius: 0.75rem;
+    text-align: center;
+    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+    width: 90%;
+    max-width: 320px;
 }
-.divider span {
-    padding: 0 0.5rem;
-    color: #9ca3af; /* text-gray-400 */
+
+.modalProfileImage {
+    width: 80px;
+    height: 80px;
+    border-radius: 9999px;
+    margin: 1rem auto;
+}
+
+.modalActions {
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+.acceptButton {
+    padding: 0.75rem 1.5rem;
+    background-color: #16a34a; /* bg-green-600 */
+    color: white;
+    border-radius: 0.5rem;
+    font-weight: 600;
+}
+.acceptButton:hover {
+    background-color: #15803d;
+}
+
+.declineButton {
+    padding: 0.75rem 1.5rem;
+    background-color: #dc2626; /* bg-red-600 */
+    color: white;
+    border-radius: 0.5rem;
+    font-weight: 600;
+}
+.declineButton:hover {
+    background-color: #b91c1c;
+}
+
+/* 사용하지 않는 이전 스타일 숨김 처리 */
+.joinForm, .divider, .lobbyTitle, .joinInput, .joinButton {
+  display: none;
 }

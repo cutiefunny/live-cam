@@ -12,19 +12,17 @@ import styles from './Room.module.css';
 export default function Room() {
   const { roomId } = useParams();
   const router = useRouter();
-  const { user, isLoading: isAuthLoading, signOut } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const userVideo = useRef();
   
   const [localStream, setLocalStream] = useState(null);
   const [mediaStatus, setMediaStatus] = useState('loading'); 
   
-  // 👇 FIX: useWebRTC 훅에서 iceServersReady 상태를 받아옵니다.
   const { createPeer, addPeer, iceServersReady } = useWebRTC(user, roomId);
   
   const { peers } = useRoom(
     roomId,
     user,
-    // mediaStatus가 'ready'이고 iceServers가 준비되었을 때만 stream을 전달합니다.
     mediaStatus !== 'loading' && iceServersReady ? localStream : undefined,
     createPeer,
     addPeer
@@ -45,7 +43,7 @@ export default function Room() {
         setMediaStatus('ready');
       })
       .catch(err => {
-        console.warn("미디어 장치에 접근할 수 없습니다. 관전 모드로 참여합니다.", err);
+        console.warn("Could not access media devices. Joining as spectator.", err);
         setLocalStream(null);
         setMediaStatus('spectator');
       });
@@ -56,13 +54,31 @@ export default function Room() {
       }
     };
   }, [isAuthLoading, user, router]);
+
+  // 통화 미응답/거절 처리 타임아웃
+  useEffect(() => {
+    if (!user || (mediaStatus !== 'ready' && mediaStatus !== 'spectator')) return;
+
+    const timeoutId = setTimeout(() => {
+      // 20초 후에도 피어가 없으면 메인으로 리디렉션
+      if (peers.length === 0) {
+        alert("Call not answered or declined.");
+        router.push('/');
+      }
+    }, 20000);
+
+    // 피어가 연결되면 타임아웃 해제
+    if (peers.length > 0) {
+      clearTimeout(timeoutId);
+    }
+
+    return () => clearTimeout(timeoutId);
+  }, [peers, user, mediaStatus, router]);
   
-  const handleSignOut = async () => {
-      await signOut();
+  const handleLeaveRoom = () => {
       router.push('/');
   }
 
-  // 👇 FIX: iceServers가 준비될 때까지 로딩 상태를 유지합니다.
   if (isAuthLoading || !user || mediaStatus === 'loading' || !iceServersReady) {
       return (
         <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh'}}>
@@ -75,8 +91,8 @@ export default function Room() {
     <div className={styles.container}>
       <header className={styles.header}>
         <h1 className={styles.roomInfo}>Room: <span className={styles.roomId}>{roomId}</span></h1>
-        <button onClick={handleSignOut} className={styles.exitButton}>
-          나가기
+        <button onClick={handleLeaveRoom} className={styles.exitButton}>
+          Leave Room
         </button>
       </header>
       
@@ -88,14 +104,14 @@ export default function Room() {
                     <img src={user.photoURL} alt="My Profile" className={styles.profileImage}/>
                 )}
                 <div className={styles.displayName}>
-                  {user.displayName} (나)
+                  {user.displayName} (You)
                 </div>
             </div>
         ) : (
             <div className={styles.spectatorMode}>
               <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={styles.spectatorIcon}><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-              <h3 className={styles.spectatorTitle}>관전 모드</h3>
-              <p>카메라/마이크 없이 참여 중입니다.</p>
+              <h3 className={styles.spectatorTitle}>Spectator Mode</h3>
+              <p>You are participating without a camera/microphone.</p>
             </div>
         )}
         
