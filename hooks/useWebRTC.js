@@ -4,21 +4,15 @@ import Peer from 'simple-peer';
 import { push, set, ref } from 'firebase/database';
 import { database } from '@/lib/firebase';
 
-// 👇 FIX: 무료 공개 TURN 서버 정보를 추가합니다.
+// 👇 FIX: Agora에서 제공하는 STUN 서버 주소로 교체합니다.
 const ICE_SERVERS = {
   iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    {
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    },
-    {
-       urls: 'turn:openrelay.metered.ca:443',
-       username: 'openrelayproject',
-       credential: 'openrelayproject',
-    }
+    { urls: "stun:stun.l.google.com:19302" },
+    // Agora의 STUN 서버는 여러 개를 동시에 사용하는 것을 권장합니다.
+    { urls: "stun:stun.agora.io:3478" },
+    { urls: "stun:stun2.agora.io:3478" },
+    { urls: "stun:stun3.agora.io:3478" },
+    { urls: "stun:stun4.agora.io:3478" },
   ],
 };
 
@@ -28,7 +22,7 @@ export function useWebRTC(user, roomID) {
       initiator: true,
       trickle: false,
       stream,
-      config: ICE_SERVERS, // 수정된 서버 설정 사용
+      config: ICE_SERVERS,
     });
 
     peer.on('signal', (signal) => {
@@ -47,7 +41,7 @@ export function useWebRTC(user, roomID) {
       initiator: false,
       trickle: false,
       stream,
-      config: ICE_SERVERS, // 수정된 서버 설정 사용
+      config: ICE_SERVERS,
     });
 
     peer.on('signal', (signal) => {
