@@ -3,7 +3,6 @@ import { useState, useEffect, useRef } from 'react';
 import { ref, onChildAdded, onChildRemoved, set, remove, onDisconnect, get, child, off } from 'firebase/database';
 import { database } from '@/lib/firebase';
 
-// ✨ iceServersReady를 매개변수로 추가합니다.
 export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServersReady) {
   const [peers, setPeers] = useState([]);
   const peersRef = useRef([]);
@@ -14,7 +13,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
   }, [peers]);
 
   useEffect(() => {
-    // ✨ iceServersReady 조건도 확인합니다.
     if (!user || !roomID || !localStream || !iceServersReady) {
       console.log('[Room] Main useEffect skipped. Conditions not met:', { hasUser: !!user, hasRoomID: !!roomID, hasLocalStream: !!localStream, iceServersReady });
       return;
@@ -115,7 +113,9 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
     
     console.log(`[Room] User ${user.uid} setting presence in room ${roomID}.`);
     set(currentUserRef, { photoURL: user.photoURL, displayName: user.displayName });
-    onDisconnect(currentUserRef).remove();
+    
+    // ✨ 이 라인을 삭제하거나 주석 처리합니다.
+    // onDisconnect(currentUserRef).remove();
     
     const userJoinedListener = onChildAdded(usersRef, handleUserJoined);
     const userLeftListener = onChildRemoved(usersRef, handleUserLeft);
@@ -127,6 +127,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
       off(usersRef, 'child_removed', userLeftListener);
       off(signalsRef, 'child_added', signalListener);
 
+      // 사용자가 의도적으로 방을 나갈 때만 이 코드가 실행됩니다.
       remove(currentUserRef);
       
       if (isCurrentUserCreator) {
@@ -151,7 +152,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
         });
       }, 5000); 
     };
-  // ✨ useEffect의 의존성 배열에 iceServersReady를 추가합니다.
   }, [roomID, user, localStream, createPeer, addPeer, iceServersReady]);
   
   return { peers };
