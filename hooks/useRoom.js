@@ -3,7 +3,8 @@ import { useState, useEffect, useRef } from 'react';
 import { ref, onChildAdded, onChildRemoved, set, remove, onDisconnect, get, child, off } from 'firebase/database';
 import { database } from '@/lib/firebase';
 
-export function useRoom(roomID, user, createPeer, addPeer) { // localStream 매개변수 제거
+// ✨ localStream을 매개변수로 추가합니다.
+export function useRoom(roomID, user, localStream, createPeer, addPeer) {
   const [peers, setPeers] = useState([]);
   const peersRef = useRef([]);
 
@@ -13,9 +14,9 @@ export function useRoom(roomID, user, createPeer, addPeer) { // localStream 매�
   }, [peers]);
 
   useEffect(() => {
-    // ✨ localStream 조건 제거
-    if (!user || !roomID) {
-      console.log('[Room] Main useEffect skipped. Conditions not met:', { hasUser: !!user, hasRoomID: !!roomID });
+    // ✨ user, roomID 뿐만 아니라 localStream도 준비되었는지 확인합니다.
+    if (!user || !roomID || !localStream) {
+      console.log('[Room] Main useEffect skipped. Conditions not met:', { hasUser: !!user, hasRoomID: !!roomID, hasLocalStream: !!localStream });
       return;
     }
 
@@ -49,7 +50,8 @@ export function useRoom(roomID, user, createPeer, addPeer) { // localStream 매�
             console.log(`[Room] Peer for ${otherUserId} already exists. Skipping createPeer.`);
             return currentPeers;
           }
-          const peer = createPeer(otherUserId); // 스트림 없이 호출
+          // ✨ createPeer 호출 시 localStream을 전달합니다.
+          const peer = createPeer(otherUserId, localStream);
           if (!peer) return currentPeers;
           const newPeerObj = {
             peerID: otherUserId,
@@ -85,7 +87,8 @@ export function useRoom(roomID, user, createPeer, addPeer) { // localStream 매�
             if (currentPeers.some(p => p.peerID === senderId)) {
               return currentPeers;
             }
-            const peer = addPeer(signal, senderId); // 스트림 없이 호출
+            // ✨ addPeer 호출 시 localStream을 전달합니다.
+            const peer = addPeer(signal, senderId, localStream);
             if (!peer) return currentPeers;
             const newPeerObj = {
               peerID: senderId,
@@ -150,7 +153,8 @@ export function useRoom(roomID, user, createPeer, addPeer) { // localStream 매�
         });
       }, 5000); 
     };
-  }, [roomID, user, createPeer, addPeer]); // ✨ localStream 의존성 제거
+  // ✨ useEffect의 의존성 배열에 localStream을 추가합니다.
+  }, [roomID, user, localStream, createPeer, addPeer]);
   
   return { peers };
 }
