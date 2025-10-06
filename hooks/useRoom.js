@@ -13,6 +13,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
   }, [peers]);
 
   useEffect(() => {
+    // localStream이 없어도 훅이 실행되도록 조건을 변경합니다.
     if (!user || !roomID || localStream === undefined) {
       console.log('[Room] Main useEffect skipped. Conditions not met:', { hasUser: !!user, hasRoomID: !!roomID, hasLocalStream: localStream !== undefined });
       return;
@@ -48,7 +49,8 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
             console.log(`[Room] Peer for ${otherUserId} already exists. Skipping createPeer.`);
             return currentPeers;
           }
-          const peer = createPeer(otherUserId, localStream);
+          // ✨ 스트림 없이 Peer 생성
+          const peer = createPeer(otherUserId, null);
           if (!peer) return currentPeers;
           const newPeerObj = {
             peerID: otherUserId,
@@ -84,7 +86,8 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
             if (currentPeers.some(p => p.peerID === senderId)) {
               return currentPeers;
             }
-            const peer = addPeer(signal, senderId, localStream);
+            // ✨ 스트림 없이 Peer 생성
+            const peer = addPeer(signal, senderId, null);
             if (!peer) return currentPeers;
             const newPeerObj = {
               peerID: senderId,
@@ -149,7 +152,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
         });
       }, 5000); 
     };
-  }, [roomID, user, localStream, createPeer, addPeer]);
+  }, [roomID, user, createPeer, addPeer]); // localStream 의존성 제거
   
   return { peers };
 }

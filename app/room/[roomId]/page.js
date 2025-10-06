@@ -14,8 +14,7 @@ export default function Room() {
   const router = useRouter();
   const { user, isLoading: isAuthLoading } = useAuth();
   const userVideo = useRef();
-  const localStreamRef = useRef(null); // 스트림을 Ref로 관리
-
+  
   const [localStream, setLocalStream] = useState(null);
   const [mediaStatus, setMediaStatus] = useState('loading'); 
   
@@ -24,6 +23,8 @@ export default function Room() {
   const { peers } = useRoom(
     roomId,
     user,
+    // ✨ useRoom에서는 더 이상 stream을 직접 사용하지 않지만,
+    // WebRTC 관련 로직이 미디어가 준비된 후에 시작되도록 조건은 유지합니다.
     mediaStatus === 'ready' && iceServersReady ? localStream : undefined,
     createPeer,
     addPeer
@@ -43,13 +44,10 @@ export default function Room() {
     let isEffectActive = true;
 
     async function getMedia() {
-        if (localStreamRef.current) return; // 이미 스트림이 있으면 중복 실행 방지
-
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
             if (isEffectActive) {
                 console.log('[RoomPage] getUserMedia success. Stream acquired.');
-                localStreamRef.current = stream;
                 setLocalStream(stream);
                 if (userVideo.current) {
                     userVideo.current.srcObject = stream;
@@ -68,13 +66,28 @@ export default function Room() {
 
     return () => {
       isEffectActive = false;
-      if (localStreamRef.current) {
-        console.log('[RoomPage] Cleaning up and stopping local stream tracks on component unmount.');
-        localStreamRef.current.getTracks().forEach(track => track.stop());
-        localStreamRef.current = null;
-      }
+      setLocalStream(currentStream => {
+        if (currentStream) {
+            console.log('[RoomPage] Cleaning up and stopping local stream tracks.');
+            currentStream.getTracks().forEach(track => track.stop());
+        }
+        return null;
+      });
     };
   }, [isAuthLoading, user, router]);
+
+  // ✨ 해결책: 새로운 useEffect를 추가하여, 피어가 생성되고 로컬 스트림이 준비되면 스트림을 연결합니다.
+  useEffect(() => {
+    if (localStream && peers.length > 0) {
+      peers.forEach(({ peer }) => {
+        // 이미 스트림이 추가되었는지 확인하여 중복 추가를 방지합니다.
+        if (peer.streams.length === 0) {
+          console.log(`[RoomPage] Attaching local stream to peer: ${peer.id}`);
+          peer.addStream(localStream);
+        }
+      });
+    }
+  }, [localStream, peers]);
 
   // 통화 미응답/거절 처리 타임아웃
   useEffect(() => {
