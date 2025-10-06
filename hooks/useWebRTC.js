@@ -48,9 +48,12 @@ export function useWebRTC(user, roomID) {
     const peer = new Peer({
       initiator: true,
       trickle: false,
-      stream,
+      // ✨ [수정] 생성자에서 stream 속성을 제거합니다.
       config: { iceServers: iceServersRef.current },
     });
+
+    // ✨ [수정] peer 객체 생성 후 addStream 메서드로 스트림을 추가합니다.
+    peer.addStream(stream);
 
     peer.on('signal', (signal) => {
       console.log(`[WebRTC] 'signal' event (offer) for ${otherUserID}`);
@@ -66,7 +69,6 @@ export function useWebRTC(user, roomID) {
     return peer;
   }, [user, roomID]);
 
-  // ✨ 해결책: addPeer 로직을 원래 방식으로 되돌립니다.
   const addPeer = useCallback((incomingSignal, senderId, stream) => {
     console.log(`[WebRTC] addPeer called for user: ${senderId}`);
     if (iceServersRef.current.length === 0) {
@@ -78,9 +80,12 @@ export function useWebRTC(user, roomID) {
     const peer = new Peer({
       initiator: false,
       trickle: false,
-      stream, // ✨ 생성자에 스트림을 다시 포함시켜 협상 과정을 단순화합니다.
+      // ✨ [수정] 생성자에서 stream 속성을 제거합니다.
       config: { iceServers: iceServersRef.current },
     });
+
+    // ✨ [수정] peer 객체 생성 후 addStream 메서드로 스트림을 추가합니다.
+    peer.addStream(stream);
 
     peer.on('signal', (signal) => {
       console.log(`[WebRTC] 'signal' event (answer) for ${senderId}`);
