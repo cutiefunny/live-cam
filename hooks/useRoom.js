@@ -1,11 +1,12 @@
 // hooks/useRoom.js
 import { useState, useEffect, useRef } from 'react';
-import { ref, onChildAdded, onChildRemoved, set, remove, onDisconnect, get, child, off } from 'firebase/database';
+import { ref, onChildAdded, onChildRemoved, set, remove, onDisconnect, get, child, off, push } from 'firebase/database';
 import { database } from '@/lib/firebase';
 
 export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServersReady) {
   const [peers, setPeers] = useState([]);
   const peersRef = useRef([]);
+  const callStateRef = useRef({}); // ✨ [추가] 통화 상태(시작 시간 등)를 추적
 
   useEffect(() => {
     peersRef.current = peers;
@@ -33,67 +34,81 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
             onDisconnect(child(creatorRef, 'status')).set('offline');
         }
     });
+    
+    // ✨ [추가] 통화 기록을 위한 이벤트 리스너 설정 함수
+    const setupPeerListeners = (peer, peerID, peerData) => {
+      peer.on('connect', () => {
+        console.log(`Call connected with ${peerID}. Recording start time.`);
+        callStateRef.current[peerID] = {
+            startTime: Date.now(),
+            peerData: peerData
+        };
+      });
+
+      peer.on('close', () => {
+        console.log(`Call with ${peerID} closed. Saving to history.`);
+        const callInfo = callStateRef.current[peerID];
+        if (callInfo && callInfo.startTime) {
+            const duration = Date.now() - callInfo.startTime;
+
+            // 1초 이상 통화한 경우에만 기록
+            if (duration > 1000) {
+                const historyRef = ref(database, 'call_history');
+                const isInitiator = user.uid > peerID;
+                
+                const callRecord = {
+                    callerId: isInitiator ? user.uid : peerID,
+                    callerName: isInitiator ? user.displayName : callInfo.peerData.displayName,
+                    calleeId: isInitiator ? peerID : user.uid,
+                    calleeName: isInitiator ? callInfo.peerData.displayName : user.displayName,
+                    roomId: roomID,
+                    timestamp: callInfo.startTime,
+                    duration: duration // milliseconds
+                };
+                push(historyRef, callRecord);
+            }
+            delete callStateRef.current[peerID];
+        }
+      });
+    };
 
     const handleUserJoined = (snapshot) => {
       const otherUserId = snapshot.key;
       const userData = snapshot.val();
-      console.log(`[Room] Event: User ${otherUserId} joined.`, userData);
-      
       if (otherUserId === user.uid) return;
 
       if (user.uid > otherUserId) {
-        console.log(`[Room] Current user (${user.uid}) is initiator. Calling createPeer for ${otherUserId}.`);
-        setPeers(currentPeers => {
-          if (currentPeers.some(p => p.peerID === otherUserId)) {
-            console.log(`[Room] Peer for ${otherUserId} already exists. Skipping createPeer.`);
-            return currentPeers;
-          }
-          const peer = createPeer(otherUserId, localStream);
-          if (!peer) return currentPeers;
-          const newPeerObj = {
-            peerID: otherUserId,
-            peer,
-            photoURL: userData.photoURL,
-            displayName: userData.displayName,
-          };
-          return [...currentPeers, newPeerObj];
-        });
+        const peer = createPeer(otherUserId, localStream);
+        if(peer) {
+          setupPeerListeners(peer, otherUserId, userData);
+          setPeers(currentPeers => {
+            if (currentPeers.some(p => p.peerID === otherUserId)) return currentPeers;
+            return [...currentPeers, { peerID: otherUserId, peer, ...userData }];
+          });
+        }
       }
     };
 
     const handleSignal = (snapshot) => {
       const { senderId, signal, senderPhotoURL, senderDisplayName } = snapshot.val();
-      console.log(`[Room] Event: Received signal from ${senderId}.`);
-
-      if (senderId === user.uid) {
-        remove(snapshot.ref);
-        return;
-      };
+      if (senderId === user.uid) { remove(snapshot.ref); return; };
 
       const peerToSignal = peersRef.current.find(p => p.peerID === senderId);
-
       if (peerToSignal) {
-        console.log(`[Room] Found existing peer for ${senderId}. Signaling...`);
         if (peerToSignal.peer && !peerToSignal.peer.destroyed) {
           peerToSignal.peer.signal(signal);
         }
       } else {
         if (signal.type === 'offer' && user.uid < senderId) {
-          console.log(`[Room] No existing peer. Current user (${user.uid}) is receiver. Calling addPeer for ${senderId}.`);
-          setPeers(currentPeers => {
-            if (currentPeers.some(p => p.peerID === senderId)) {
-              return currentPeers;
-            }
-            const peer = addPeer(signal, senderId, localStream);
-            if (!peer) return currentPeers;
-            const newPeerObj = {
-              peerID: senderId,
-              peer,
-              photoURL: senderPhotoURL,
-              displayName: senderDisplayName,
-            };
-            return [...currentPeers, newPeerObj];
-          });
+          const peer = addPeer(signal, senderId, localStream);
+          if (peer) {
+            const peerData = { photoURL: senderPhotoURL, displayName: senderDisplayName };
+            setupPeerListeners(peer, senderId, peerData);
+            setPeers(currentPeers => {
+              if (currentPeers.some(p => p.peerID === senderId)) return currentPeers;
+              return [...currentPeers, { peerID: senderId, peer, ...peerData }];
+            });
+          }
         }
       }
       remove(snapshot.ref);
@@ -101,33 +116,23 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
 
     const handleUserLeft = (snapshot) => {
       const removedUserId = snapshot.key;
-      console.log(`[Room] Event: User ${removedUserId} left.`);
       const peerToRemove = peersRef.current.find(p => p.peerID === removedUserId);
-      
-      if (peerToRemove && peerToRemove.peer && !peerToRemove.peer.destroyed) {
+      if (peerToRemove?.peer && !peerToRemove.peer.destroyed) {
           peerToRemove.peer.destroy();
       }
-
       setPeers(currentPeers => currentPeers.filter(p => p.peerID !== removedUserId));
     };
     
-    console.log(`[Room] User ${user.uid} setting presence in room ${roomID}.`);
     set(currentUserRef, { photoURL: user.photoURL, displayName: user.displayName });
-    
-    // ✨ 이 라인을 삭제하거나 주석 처리합니다.
-    // onDisconnect(currentUserRef).remove();
     
     const userJoinedListener = onChildAdded(usersRef, handleUserJoined);
     const userLeftListener = onChildRemoved(usersRef, handleUserLeft);
     const signalListener = onChildAdded(signalsRef, handleSignal);
 
     return () => {
-      console.log(`[Room] Cleaning up room ${roomID} for user ${user.uid}.`);
       off(usersRef, 'child_added', userJoinedListener);
       off(usersRef, 'child_removed', userLeftListener);
       off(signalsRef, 'child_added', signalListener);
-
-      // 사용자가 의도적으로 방을 나갈 때만 이 코드가 실행됩니다.
       remove(currentUserRef);
       
       if (isCurrentUserCreator) {
@@ -147,7 +152,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
         get(usersRef).then((snapshot) => {
           if (!snapshot.exists()) {
             remove(roomRef);
-            console.log(`[Room] Room ${roomID} was empty and has been deleted.`);
           }
         });
       }, 5000); 

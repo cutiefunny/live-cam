@@ -1,20 +1,18 @@
 // app/page.js
 'use client';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { nanoid } from 'nanoid';
 import { useAuth } from '@/hooks/useAuth';
 import useAppStore from '@/store/useAppStore';
-import { ref, onValue, off, set, remove, onChildAdded } from 'firebase/database';
+import { ref, onValue, off, set, remove, onChildAdded } from 'firebase/database'; // push 제거
 import { database } from '@/lib/firebase';
 import styles from './Home.module.css';
 
-// 통화 수신 모달 컴포넌트
+// 통화 수신 모달 컴포넌트 (변경 없음)
 const IncomingCallModal = ({ callRequest, onAccept, onDecline }) => {
     if (!callRequest) return null;
-
     const { requesterName, requesterPhotoURL } = callRequest;
-
     return (
         <div className={styles.modalOverlay}>
             <div className={styles.modalContent}>
@@ -32,32 +30,34 @@ const IncomingCallModal = ({ callRequest, onAccept, onDecline }) => {
 
 
 export default function Home() {
-  const { user, signIn, isLoading, isCreator, goLive, goOffline } = useAuth();
+  const { user, signIn, isLoading, isCreator, goOnline, goOffline } = useAuth();
   const router = useRouter();
   const { creators, setCreators, callRequest, setCallRequest } = useAppStore();
 
-  // 크리에이터 목록 가져오기
+  const [isOnline, setIsOnline] = useState(false);
+
   useEffect(() => {
     const creatorsRef = ref(database, 'creators');
     const listener = onValue(creatorsRef, (snapshot) => {
       const data = snapshot.val();
       const creatorList = data ? Object.values(data) : [];
       setCreators(creatorList);
+      
+      if (user) {
+        const amIOnline = creatorList.some(c => c.uid === user.uid);
+        setIsOnline(amIOnline);
+      }
     });
-
     return () => off(creatorsRef, 'value', listener);
-  }, [setCreators]);
+  }, [setCreators, user]);
   
-  // 크리에이터인 경우 통화 요청 리스닝
   useEffect(() => {
     if (!user || !isCreator) return;
-
     const callRef = ref(database, `calls/${user.uid}`);
     const listener = onChildAdded(callRef, (snapshot) => {
         const callData = snapshot.val();
         setCallRequest({ ...callData, callId: snapshot.key });
     });
-
     return () => off(callRef, 'child_added', listener);
   }, [user, isCreator, setCallRequest]);
 
@@ -84,25 +84,20 @@ export default function Home() {
         requesterPhotoURL: user.photoURL,
         timestamp: Date.now(),
     });
+    
+    // ✨ [수정] 여기서 통화 기록을 저장하던 로직을 제거합니다.
 
     router.push(`/room/${newRoomId}`);
   };
 
   const handleAcceptCall = async () => {
     if (!callRequest || !user) return;
-    
-    // 크리에이터 상태를 'busy'로 변경
     const creatorStatusRef = ref(database, `creators/${user.uid}/status`);
     await set(creatorStatusRef, 'busy');
-
     const { roomId, requesterId } = callRequest;
     const callRef = ref(database, `calls/${user.uid}/${requesterId}`);
-    
-    // 통화 요청 데이터 삭제
     await remove(callRef);
     setCallRequest(null);
-
-    // 화상 통화 방으로 이동
     router.push(`/room/${roomId}`);
   };
 
@@ -136,17 +131,19 @@ export default function Home() {
         <div className={styles.lobbyContainer}>
             <div className={styles.userInfo}>
                 <img src={user.photoURL} alt={user.displayName} className={styles.userAvatar} />
-                <span>Welcome, {user.displayName}</span>
+                <span>Welcome, {user.displayName} {isCreator && '(Creator)'}</span>
             </div>
             
-            {isCreator ? (
+            {isCreator && (
+              isOnline ? (
                 <button onClick={goOffline} className={styles.goOfflineButton}>
                     Go Offline
                 </button>
-            ) : (
-                <button onClick={goLive} className={styles.createButton}>
-                    Go Live as Creator
+              ) : (
+                <button onClick={goOnline} className={styles.createButton}>
+                    Go Online
                 </button>
+              )
             )}
 
             <h2 className={styles.creatorListTitle}>Online Creators</h2>
