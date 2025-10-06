@@ -23,7 +23,6 @@ export default function Room() {
   const { peers } = useRoom(
     roomId,
     user,
-    // 스트림이 준비되었을 때만 useRoom 훅이 실행되도록 합니다.
     mediaStatus === 'ready' && iceServersReady ? localStream : undefined,
     createPeer,
     addPeer
@@ -48,7 +47,7 @@ export default function Room() {
       .then(stream => {
         if (isComponentMounted) {
             console.log('[RoomPage] getUserMedia success. Stream acquired.');
-            setLocalStream(stream); // State 업데이트로 리렌더링 유발
+            setLocalStream(stream);
             setMediaStatus('ready');
         }
       })
@@ -62,7 +61,6 @@ export default function Room() {
 
     return () => {
       isComponentMounted = false;
-      // 컴포넌트 언마운트 시 스트림을 확실히 종료합니다.
       setLocalStream(currentStream => {
         if (currentStream) {
             console.log('[RoomPage] Cleaning up and stopping local stream tracks.');
@@ -73,13 +71,13 @@ export default function Room() {
     };
   }, [isAuthLoading, user, router]);
 
-  // ✨ 해결책: localStream이 변경될 때 비디오 엘리먼트에 연결하는 useEffect 추가
+  // ✨ 해결책: localStream과 mediaStatus가 모두 준비되었을 때 비디오 엘리먼트에 연결
   useEffect(() => {
-    if (localStream && userVideo.current) {
+    if (mediaStatus === 'ready' && localStream && userVideo.current) {
       console.log('[RoomPage] Attaching local stream to video element.');
       userVideo.current.srcObject = localStream;
     }
-  }, [localStream]);
+  }, [localStream, mediaStatus]); // mediaStatus를 의존성 배열에 추가
 
   // 통화 미응답/거절 처리 타임아웃
   useEffect(() => {
@@ -161,7 +159,7 @@ export default function Room() {
         )}
       </main>
       
-      {mediaStatus === 'ready' && (
+      {mediaStatus === 'ready' && localStream && (
         <footer className={styles.footer}>
           <Controls stream={localStream} onShareScreen={() => {}} />
         </footer>
