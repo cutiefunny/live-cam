@@ -103,9 +103,6 @@ export default function Room() {
         {mediaStatus === 'ready' ? (
             <div className={styles.myVideoContainer}>
                 <video muted ref={userVideo} autoPlay playsInline className={styles.video} />
-                {user.photoURL && (
-                    <img src={user.photoURL} alt="My Profile" className={styles.profileImage}/>
-                )}
                 <div className={styles.displayName}>
                   {user.displayName} (You)
                 </div>
