@@ -73,13 +73,16 @@ export default function Room() {
     };
   }, [isAuthLoading, user, router]);
 
-  // ✨ [수정] localStream이 준비되면 비디오 요소에 연결하는 useEffect 추가
+  // ✨ [수정] localStream이 준비되면 비디오 요소에 연결하고 play()를 호출합니다.
   useEffect(() => {
-    if (userVideo.current && localStream) {
+    if (userVideo.current && localStream && mediaStatus === 'ready') {
       console.log('[RoomPage] Attaching local stream to video element.');
       userVideo.current.srcObject = localStream;
+      userVideo.current.play().catch(error => {
+        console.error('Error attempting to play local video:', error);
+      });
     }
-  }, [localStream, mediaStatus]); // localStream과 mediaStatus 변경 시 실행
+  }, [localStream, mediaStatus]);
 
   // 통화 미응답/거절 처리 타임아웃
   useEffect(() => {
