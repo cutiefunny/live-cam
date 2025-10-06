@@ -3,8 +3,8 @@ import { useState, useEffect, useRef } from 'react';
 import { ref, onChildAdded, onChildRemoved, set, remove, onDisconnect, get, child, off } from 'firebase/database';
 import { database } from '@/lib/firebase';
 
-// ✨ localStream을 매개변수로 추가합니다.
-export function useRoom(roomID, user, localStream, createPeer, addPeer) {
+// ✨ iceServersReady를 매개변수로 추가합니다.
+export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServersReady) {
   const [peers, setPeers] = useState([]);
   const peersRef = useRef([]);
 
@@ -14,9 +14,9 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
   }, [peers]);
 
   useEffect(() => {
-    // ✨ user, roomID 뿐만 아니라 localStream도 준비되었는지 확인합니다.
-    if (!user || !roomID || !localStream) {
-      console.log('[Room] Main useEffect skipped. Conditions not met:', { hasUser: !!user, hasRoomID: !!roomID, hasLocalStream: !!localStream });
+    // ✨ iceServersReady 조건도 확인합니다.
+    if (!user || !roomID || !localStream || !iceServersReady) {
+      console.log('[Room] Main useEffect skipped. Conditions not met:', { hasUser: !!user, hasRoomID: !!roomID, hasLocalStream: !!localStream, iceServersReady });
       return;
     }
 
@@ -50,7 +50,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
             console.log(`[Room] Peer for ${otherUserId} already exists. Skipping createPeer.`);
             return currentPeers;
           }
-          // ✨ createPeer 호출 시 localStream을 전달합니다.
           const peer = createPeer(otherUserId, localStream);
           if (!peer) return currentPeers;
           const newPeerObj = {
@@ -87,7 +86,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
             if (currentPeers.some(p => p.peerID === senderId)) {
               return currentPeers;
             }
-            // ✨ addPeer 호출 시 localStream을 전달합니다.
             const peer = addPeer(signal, senderId, localStream);
             if (!peer) return currentPeers;
             const newPeerObj = {
@@ -153,8 +151,8 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
         });
       }, 5000); 
     };
-  // ✨ useEffect의 의존성 배열에 localStream을 추가합니다.
-  }, [roomID, user, localStream, createPeer, addPeer]);
+  // ✨ useEffect의 의존성 배열에 iceServersReady를 추가합니다.
+  }, [roomID, user, localStream, createPeer, addPeer, iceServersReady]);
   
   return { peers };
 }

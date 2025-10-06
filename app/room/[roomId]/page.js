@@ -20,13 +20,14 @@ export default function Room() {
   
   const { createPeer, addPeer, iceServersReady } = useWebRTC(user, roomId);
   
-  // ✨ localStream을 useRoom 훅에 전달합니다.
+  // ✨ iceServersReady를 useRoom 훅에 전달합니다.
   const { peers } = useRoom(
     roomId,
     user,
-    localStream, // ✨ 전달
+    localStream,
     createPeer,
-    addPeer
+    addPeer,
+    iceServersReady // ✨ 전달
   );
   
   console.log('[RoomPage] Component rendering.');
@@ -74,18 +75,6 @@ export default function Room() {
       });
     };
   }, [isAuthLoading, user, router]);
-
-  // ✨ 피어 생성 시 스트림이 이미 포함되므로 이 useEffect는 더 이상 필요 없습니다.
-  // useEffect(() => {
-  //   if (mediaStatus === 'ready' && localStream && peers.length > 0) {
-  //     peers.forEach(({ peer, peerID }) => {
-  //       if (peer.streams.length === 0) {
-  //         console.log(`[RoomPage] Attaching local stream to peer: ${peerID}`);
-  //         peer.addStream(localStream);
-  //       }
-  //     });
-  //   }
-  // }, [localStream, peers, mediaStatus]);
 
   // 통화 미응답/거절 처리 타임아웃
   useEffect(() => {
