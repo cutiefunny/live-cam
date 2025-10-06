@@ -20,18 +20,18 @@ export default function Room() {
   
   const { createPeer, addPeer, iceServersReady } = useWebRTC(user, roomId);
   
-  // ✨ iceServersReady를 useRoom 훅에 전달합니다.
   const { peers } = useRoom(
     roomId,
     user,
     localStream,
     createPeer,
     addPeer,
-    iceServersReady // ✨ 전달
+    iceServersReady
   );
   
   console.log('[RoomPage] Component rendering.');
   
+  // 1. 미디어 장치(카메라, 마이크) 스트림을 가져오는 useEffect
   useEffect(() => {
     if (isAuthLoading) return;
     if (!user) {
@@ -49,9 +49,6 @@ export default function Room() {
             if (isEffectActive) {
                 console.log('[RoomPage] getUserMedia success. Stream acquired.');
                 setLocalStream(stream);
-                if (userVideo.current) {
-                    userVideo.current.srcObject = stream;
-                }
                 setMediaStatus('ready');
             }
         } catch (err) {
@@ -75,6 +72,14 @@ export default function Room() {
       });
     };
   }, [isAuthLoading, user, router]);
+
+  // ✨ [수정] localStream이 준비되면 비디오 요소에 연결하는 useEffect 추가
+  useEffect(() => {
+    if (userVideo.current && localStream) {
+      console.log('[RoomPage] Attaching local stream to video element.');
+      userVideo.current.srcObject = localStream;
+    }
+  }, [localStream, mediaStatus]); // localStream과 mediaStatus 변경 시 실행
 
   // 통화 미응답/거절 처리 타임아웃
   useEffect(() => {
@@ -133,7 +138,7 @@ export default function Room() {
             </div>
         ) : (
           <div className={styles.spectatorPip}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={styles.spectatorIcon}><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={styles.spectatorIcon}><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
             <p>Spectator Mode</p>
           </div>
         )}
