@@ -6,13 +6,33 @@
 
 .title {
   font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.currentSession {
+  margin-top: 0;
   margin-bottom: 1rem;
-  border-bottom: 1px solid #374151;
-  padding-bottom: 0.5rem;
+  color: #9ca3af;
+}
+
+.currentSession strong {
+  color: #f3f4f6;
 }
 
 .actions {
   margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sessionSelector {
+  padding: 0.5rem;
+  background-color: #374151;
+  color: white;
+  border: 1px solid #4b5563;
+  border-radius: 0.5rem;
+  font-family: monospace;
 }
 
 .button {
@@ -20,14 +40,18 @@
   background-color: #4f46e5;
   color: white;
   border-radius: 0.5rem;
-  margin-right: 0.5rem;
 }
-.button:hover {
+.button:hover:not(:disabled) {
   background-color: #4338ca;
+}
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .clearButton {
   background-color: #dc2626;
+  margin-left: auto; /* Pushes the button to the far right */
 }
 .clearButton:hover {
   background-color: #b91c1c;
@@ -58,6 +82,7 @@
 .type {
   font-weight: bold;
   flex-shrink: 0;
+  width: 70px; /* Fixed width for alignment */
 }
 
 .log .type { color: #9ca3af; } /* Gray */
