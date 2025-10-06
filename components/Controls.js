@@ -1,9 +1,8 @@
 // components/Controls.js
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import styles from './Controls.module.css';
 
 // SVG 아이콘 컴포넌트는 변경 없이 그대로 사용합니다.
-// ... (SVG Icon components 생략) ...
 const VideoOnIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 8-6 4 6 4V8Z"></path><rect width="14" height="12" x="2" y="6" rx="2" ry="2"></rect></svg> );
 const VideoOffIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg> );
 const MicOnIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg> );
@@ -12,10 +11,19 @@ const ScreenShareIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" width="2
 
 
 const Controls = ({ stream }) => {
-  const [isVideoOn, setIsVideoOn] = useState(() => stream.getVideoTracks()[0]?.enabled ?? false);
-  const [isAudioOn, setIsAudioOn] = useState(() => stream.getAudioTracks()[0]?.enabled ?? false);
+  const [isVideoOn, setIsVideoOn] = useState(false);
+  const [isAudioOn, setIsAudioOn] = useState(false);
+
+  // stream prop이 변경될 때마다 비디오/오디오 상태를 업데이트합니다.
+  useEffect(() => {
+    if (stream) {
+      setIsVideoOn(stream.getVideoTracks()[0]?.enabled ?? false);
+      setIsAudioOn(stream.getAudioTracks()[0]?.enabled ?? false);
+    }
+  }, [stream]);
 
   const handleToggleVideo = () => {
+    if (!stream) return;
     const videoTrack = stream.getVideoTracks()[0];
     if (videoTrack) {
       videoTrack.enabled = !videoTrack.enabled;
@@ -24,6 +32,7 @@ const Controls = ({ stream }) => {
   };
 
   const handleToggleAudio = () => {
+    if (!stream) return;
     const audioTrack = stream.getAudioTracks()[0];
     if (audioTrack) {
       audioTrack.enabled = !audioTrack.enabled;

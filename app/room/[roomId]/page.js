@@ -14,7 +14,8 @@ export default function Room() {
   const router = useRouter();
   const { user, isLoading: isAuthLoading } = useAuth();
   const userVideo = useRef();
-  
+  const localStreamRef = useRef(null); // 스트림을 Ref로 관리
+
   const [localStream, setLocalStream] = useState(null);
   const [mediaStatus, setMediaStatus] = useState('loading'); 
   
@@ -30,54 +31,50 @@ export default function Room() {
   
   console.log('[RoomPage] Component rendering.');
   
-  // 미디어 장치를 가져오는 useEffect
   useEffect(() => {
-    console.log('[RoomPage] Auth state changed:', { isAuthLoading, user: user ? user.uid : null });
-    if (!isAuthLoading && !user) {
-      console.log('[RoomPage] Not authenticated, redirecting to home.');
+    if (isAuthLoading) return;
+    if (!user) {
       router.push('/');
       return;
     }
-    
+
     console.log('[RoomPage] Media devices effect running.');
     
-    let isComponentMounted = true;
+    let isEffectActive = true;
 
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-      .then(stream => {
-        if (isComponentMounted) {
-            console.log('[RoomPage] getUserMedia success. Stream acquired.');
-            setLocalStream(stream);
-            setMediaStatus('ready');
+    async function getMedia() {
+        if (localStreamRef.current) return; // 이미 스트림이 있으면 중복 실행 방지
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            if (isEffectActive) {
+                console.log('[RoomPage] getUserMedia success. Stream acquired.');
+                localStreamRef.current = stream;
+                setLocalStream(stream);
+                if (userVideo.current) {
+                    userVideo.current.srcObject = stream;
+                }
+                setMediaStatus('ready');
+            }
+        } catch (err) {
+            if (isEffectActive) {
+                console.error("[RoomPage] getUserMedia error. Joining as spectator.", err);
+                setMediaStatus('spectator');
+            }
         }
-      })
-      .catch(err => {
-        if (isComponentMounted) {
-            console.error("[RoomPage] getUserMedia error. Joining as spectator.", err);
-            setLocalStream(null);
-            setMediaStatus('spectator');
-        }
-      });
+    }
+
+    getMedia();
 
     return () => {
-      isComponentMounted = false;
-      setLocalStream(currentStream => {
-        if (currentStream) {
-            console.log('[RoomPage] Cleaning up and stopping local stream tracks.');
-            currentStream.getTracks().forEach(track => track.stop());
-        }
-        return null;
-      });
+      isEffectActive = false;
+      if (localStreamRef.current) {
+        console.log('[RoomPage] Cleaning up and stopping local stream tracks on component unmount.');
+        localStreamRef.current.getTracks().forEach(track => track.stop());
+        localStreamRef.current = null;
+      }
     };
   }, [isAuthLoading, user, router]);
-
-  // ✨ 해결책: localStream과 mediaStatus가 모두 준비되었을 때 비디오 엘리먼트에 연결
-  useEffect(() => {
-    if (mediaStatus === 'ready' && localStream && userVideo.current) {
-      console.log('[RoomPage] Attaching local stream to video element.');
-      userVideo.current.srcObject = localStream;
-    }
-  }, [localStream, mediaStatus]); // mediaStatus를 의존성 배열에 추가
 
   // 통화 미응답/거절 처리 타임아웃
   useEffect(() => {
@@ -127,7 +124,6 @@ export default function Room() {
       </header>
       
       <main className={styles.main}>
-        {/* Local Video in Picture-in-Picture */}
         {mediaStatus === 'ready' ? (
             <div className={styles.myVideoContainer}>
                 <video muted ref={userVideo} autoPlay playsInline className={styles.video} />
@@ -142,7 +138,6 @@ export default function Room() {
           </div>
         )}
         
-        {/* Main Remote Video */}
         {mainPeer ? (
           <div className={styles.remoteVideoContainer}>
             <Video 
