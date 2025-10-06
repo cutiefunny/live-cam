@@ -48,12 +48,13 @@ export function useWebRTC(user, roomID) {
     const peer = new Peer({
       initiator: true,
       trickle: false,
-      // ✨ [수정] 생성자에서 stream 속성을 제거합니다.
       config: { iceServers: iceServersRef.current },
     });
-
-    // ✨ [수정] peer 객체 생성 후 addStream 메서드로 스트림을 추가합니다.
-    peer.addStream(stream);
+    
+    // ✨ [수정] addStream 대신 addTrack API를 사용하여 스트림의 각 트랙을 개별적으로 추가합니다.
+    stream.getTracks().forEach(track => {
+      peer.addTrack(track, stream);
+    });
 
     peer.on('signal', (signal) => {
       console.log(`[WebRTC] 'signal' event (offer) for ${otherUserID}`);
@@ -80,12 +81,13 @@ export function useWebRTC(user, roomID) {
     const peer = new Peer({
       initiator: false,
       trickle: false,
-      // ✨ [수정] 생성자에서 stream 속성을 제거합니다.
       config: { iceServers: iceServersRef.current },
     });
 
-    // ✨ [수정] peer 객체 생성 후 addStream 메서드로 스트림을 추가합니다.
-    peer.addStream(stream);
+    // ✨ [수정] addStream 대신 addTrack API를 사용하여 스트림의 각 트랙을 개별적으로 추가합니다.
+    stream.getTracks().forEach(track => {
+      peer.addTrack(track, stream);
+    });
 
     peer.on('signal', (signal) => {
       console.log(`[WebRTC] 'signal' event (answer) for ${senderId}`);
