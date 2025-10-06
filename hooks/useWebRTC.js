@@ -1,11 +1,17 @@
 // hooks/useWebRTC.js
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react'; // useRef 추가
 import Peer from 'simple-peer';
 import { push, set, ref } from 'firebase/database';
 import { database } from '@/lib/firebase';
 
 export function useWebRTC(user, roomID) {
   const [iceServers, setIceServers] = useState([]);
+  // ✨ 해결책: iceServers를 ref로 관리하여 함수 재생성을 방지합니다.
+  const iceServersRef = useRef(iceServers);
+
+  useEffect(() => {
+    iceServersRef.current = iceServers;
+  }, [iceServers]);
 
   useEffect(() => {
     console.log('[WebRTC] Hook mounted. Fetching ICE servers...');
@@ -32,19 +38,19 @@ export function useWebRTC(user, roomID) {
     fetchIceServers();
   }, []);
 
-  const createPeer = useCallback((otherUserID) => { // stream 매개변수 제거
+  const createPeer = useCallback((otherUserID, stream) => {
     console.log(`[WebRTC] createPeer called for user: ${otherUserID}`);
-    if (iceServers.length === 0) {
+    if (iceServersRef.current.length === 0) { // ref 사용
         console.warn('[WebRTC] createPeer aborted: ICE servers not ready.');
         return null;
     }
-    console.log('[WebRTC] Creating peer with ICE servers:', iceServers);
+    console.log('[WebRTC] Creating peer with ICE servers:', iceServersRef.current);
 
     const peer = new Peer({
       initiator: true,
       trickle: false,
-      // stream 옵션 제거
-      config: { iceServers },
+      stream,
+      config: { iceServers: iceServersRef.current }, // ref 사용
     });
 
     peer.on('signal', (signal) => {
@@ -59,21 +65,21 @@ export function useWebRTC(user, roomID) {
     peer.on('error', (err) => console.error(`[WebRTC] 'error' event with ${otherUserID}:`, err));
 
     return peer;
-  }, [user, roomID, iceServers]);
+  }, [user, roomID]); // ✨ iceServers 의존성 제거
 
-  const addPeer = useCallback((incomingSignal, senderId) => { // stream 매개변수 제거
+  const addPeer = useCallback((incomingSignal, senderId, stream) => {
     console.log(`[WebRTC] addPeer called for user: ${senderId}`);
-    if (iceServers.length === 0) {
+    if (iceServersRef.current.length === 0) { // ref 사용
       console.warn('[WebRTC] addPeer aborted: ICE servers not ready.');
       return null;
     }
-    console.log('[WebRTC] Adding peer with ICE servers:', iceServers);
+    console.log('[WebRTC] Adding peer with ICE servers:', iceServersRef.current);
 
     const peer = new Peer({
       initiator: false,
       trickle: false,
-      // stream 옵션 제거
-      config: { iceServers },
+      stream,
+      config: { iceServers: iceServersRef.current }, // ref 사용
     });
 
     peer.on('signal', (signal) => {
@@ -89,7 +95,7 @@ export function useWebRTC(user, roomID) {
 
     peer.signal(incomingSignal);
     return peer;
-  }, [user, roomID, iceServers]);
+  }, [user, roomID]); // ✨ iceServers 의존성 제거
   
   return { createPeer, addPeer, iceServersReady: iceServers.length > 0 };
 }
