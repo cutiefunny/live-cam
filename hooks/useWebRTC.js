@@ -66,7 +66,7 @@ export function useWebRTC(user, roomID) {
     return peer;
   }, [user, roomID]);
 
-  // ✨ 해결책: addPeer 로직 수정
+  // ✨ 해결책: addPeer 로직을 원래 방식으로 되돌립니다.
   const addPeer = useCallback((incomingSignal, senderId, stream) => {
     console.log(`[WebRTC] addPeer called for user: ${senderId}`);
     if (iceServersRef.current.length === 0) {
@@ -78,7 +78,7 @@ export function useWebRTC(user, roomID) {
     const peer = new Peer({
       initiator: false,
       trickle: false,
-      // ✨ Receiver는 생성자에서 stream을 추가하지 않습니다.
+      stream, // ✨ 생성자에 스트림을 다시 포함시켜 협상 과정을 단순화합니다.
       config: { iceServers: iceServersRef.current },
     });
 
@@ -93,13 +93,7 @@ export function useWebRTC(user, roomID) {
     peer.on('close', () => console.log(`[WebRTC] 'close' event: Connection closed with ${senderId}`));
     peer.on('error', (err) => console.error(`[WebRTC] 'error' event with ${senderId}:`, err));
 
-    // 먼저 상대방의 offer 시그널을 처리합니다.
     peer.signal(incomingSignal);
-
-    // ✨ 그 다음에 자신의 스트림을 추가하여 재협상(re-negotiation)을 유도합니다.
-    if (stream) {
-      peer.addStream(stream);
-    }
     
     return peer;
   }, [user, roomID]);
