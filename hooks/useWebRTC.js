@@ -5,10 +5,8 @@ import { push, set, ref } from 'firebase/database';
 import { database } from '@/lib/firebase';
 
 export function useWebRTC(user, roomID) {
-  // iceServers 상태를 관리합니다. 초기값은 빈 배열입니다.
   const [iceServers, setIceServers] = useState([]);
 
-  // 컴포넌트가 마운트될 때 API로부터 TURN 서버 정보를 가져옵니다.
   useEffect(() => {
     console.log('[WebRTC] Hook mounted. Fetching ICE servers...');
     const fetchIceServers = async () => {
@@ -22,7 +20,6 @@ export function useWebRTC(user, roomID) {
         setIceServers(data.iceServers);
       } catch (error) {
         console.error("[WebRTC] Could not fetch ICE servers. Using STUN only.", error);
-        // 실패 시 기본 STUN 서버만 사용합니다.
         const stunServers = [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' },
@@ -33,9 +30,9 @@ export function useWebRTC(user, roomID) {
     };
 
     fetchIceServers();
-  }, []); // 이 useEffect는 한 번만 실행됩니다.
+  }, []);
 
-  const createPeer = useCallback((otherUserID, stream) => {
+  const createPeer = useCallback((otherUserID) => { // stream 매개변수 제거
     console.log(`[WebRTC] createPeer called for user: ${otherUserID}`);
     if (iceServers.length === 0) {
         console.warn('[WebRTC] createPeer aborted: ICE servers not ready.');
@@ -46,8 +43,8 @@ export function useWebRTC(user, roomID) {
     const peer = new Peer({
       initiator: true,
       trickle: false,
-      stream,
-      config: { iceServers }, // 상태에 저장된 서버 정보 사용
+      // stream 옵션 제거
+      config: { iceServers },
     });
 
     peer.on('signal', (signal) => {
@@ -64,7 +61,7 @@ export function useWebRTC(user, roomID) {
     return peer;
   }, [user, roomID, iceServers]);
 
-  const addPeer = useCallback((incomingSignal, senderId, stream) => {
+  const addPeer = useCallback((incomingSignal, senderId) => { // stream 매개변수 제거
     console.log(`[WebRTC] addPeer called for user: ${senderId}`);
     if (iceServers.length === 0) {
       console.warn('[WebRTC] addPeer aborted: ICE servers not ready.');
@@ -75,8 +72,8 @@ export function useWebRTC(user, roomID) {
     const peer = new Peer({
       initiator: false,
       trickle: false,
-      stream,
-      config: { iceServers }, // 상태에 저장된 서버 정보 사용
+      // stream 옵션 제거
+      config: { iceServers },
     });
 
     peer.on('signal', (signal) => {

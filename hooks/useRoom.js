@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ref, onChildAdded, onChildRemoved, set, remove, onDisconnect, get, child, off } from 'firebase/database';
 import { database } from '@/lib/firebase';
 
-export function useRoom(roomID, user, localStream, createPeer, addPeer) {
+export function useRoom(roomID, user, createPeer, addPeer) { // localStream 매개변수 제거
   const [peers, setPeers] = useState([]);
   const peersRef = useRef([]);
 
@@ -13,9 +13,9 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
   }, [peers]);
 
   useEffect(() => {
-    // localStream이 없어도 훅이 실행되도록 조건을 변경합니다.
-    if (!user || !roomID || localStream === undefined) {
-      console.log('[Room] Main useEffect skipped. Conditions not met:', { hasUser: !!user, hasRoomID: !!roomID, hasLocalStream: localStream !== undefined });
+    // ✨ localStream 조건 제거
+    if (!user || !roomID) {
+      console.log('[Room] Main useEffect skipped. Conditions not met:', { hasUser: !!user, hasRoomID: !!roomID });
       return;
     }
 
@@ -49,8 +49,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
             console.log(`[Room] Peer for ${otherUserId} already exists. Skipping createPeer.`);
             return currentPeers;
           }
-          // ✨ 스트림 없이 Peer 생성
-          const peer = createPeer(otherUserId, null);
+          const peer = createPeer(otherUserId); // 스트림 없이 호출
           if (!peer) return currentPeers;
           const newPeerObj = {
             peerID: otherUserId,
@@ -86,8 +85,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
             if (currentPeers.some(p => p.peerID === senderId)) {
               return currentPeers;
             }
-            // ✨ 스트림 없이 Peer 생성
-            const peer = addPeer(signal, senderId, null);
+            const peer = addPeer(signal, senderId); // 스트림 없이 호출
             if (!peer) return currentPeers;
             const newPeerObj = {
               peerID: senderId,
@@ -152,7 +150,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
         });
       }, 5000); 
     };
-  }, [roomID, user, createPeer, addPeer]); // localStream 의존성 제거
+  }, [roomID, user, createPeer, addPeer]); // ✨ localStream 의존성 제거
   
   return { peers };
 }

@@ -20,12 +20,10 @@ export default function Room() {
   
   const { createPeer, addPeer, iceServersReady } = useWebRTC(user, roomId);
   
+  // ✨ localStream 없이 useRoom 훅 호출
   const { peers } = useRoom(
     roomId,
     user,
-    // ✨ useRoom에서는 더 이상 stream을 직접 사용하지 않지만,
-    // WebRTC 관련 로직이 미디어가 준비된 후에 시작되도록 조건은 유지합니다.
-    mediaStatus === 'ready' && iceServersReady ? localStream : undefined,
     createPeer,
     addPeer
   );
@@ -76,22 +74,22 @@ export default function Room() {
     };
   }, [isAuthLoading, user, router]);
 
-  // ✨ 해결책: 새로운 useEffect를 추가하여, 피어가 생성되고 로컬 스트림이 준비되면 스트림을 연결합니다.
+  // ✨ 해결책: 피어가 생성되고 로컬 스트림이 준비되면 스트림을 연결합니다.
   useEffect(() => {
-    if (localStream && peers.length > 0) {
-      peers.forEach(({ peer }) => {
+    if (mediaStatus === 'ready' && localStream && peers.length > 0) {
+      peers.forEach(({ peer, peerID }) => {
         // 이미 스트림이 추가되었는지 확인하여 중복 추가를 방지합니다.
         if (peer.streams.length === 0) {
-          console.log(`[RoomPage] Attaching local stream to peer: ${peer.id}`);
+          console.log(`[RoomPage] Attaching local stream to peer: ${peerID}`);
           peer.addStream(localStream);
         }
       });
     }
-  }, [localStream, peers]);
+  }, [localStream, peers, mediaStatus]);
 
   // 통화 미응답/거절 처리 타임아웃
   useEffect(() => {
-    if (!user || (mediaStatus !== 'ready' && mediaStatus !== 'spectator')) return;
+    if (!user || (mediaStatus !== 'ready' && mediaStatus !== 'spectator') || !iceServersReady) return;
 
     const timeoutId = setTimeout(() => {
       if (peers.length === 0) {
@@ -106,7 +104,7 @@ export default function Room() {
     }
 
     return () => clearTimeout(timeoutId);
-  }, [peers, user, mediaStatus, router]);
+  }, [peers, user, mediaStatus, router, iceServersReady]);
 
   useEffect(() => {
     console.log('[RoomPage] ICE server status:', { iceServersReady });
