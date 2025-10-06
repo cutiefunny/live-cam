@@ -15,26 +15,23 @@ export default function Room() {
   const { user, isLoading: isAuthLoading } = useAuth();
   const userVideo = useRef();
   
-  // localStream을 state 대신 ref로 관리하여 이중 실행의 영향을 받지 않도록 합니다.
-  const localStreamRef = useRef(null);
-  // localStream 상태는 UI 렌더링을 위해 별도로 유지합니다.
   const [localStream, setLocalStream] = useState(null);
-
   const [mediaStatus, setMediaStatus] = useState('loading'); 
   
   const { createPeer, addPeer, iceServersReady } = useWebRTC(user, roomId);
   
-  // useRoom 훅에는 state인 localStream을 전달하여, 스트림이 준비되었을 때 훅이 실행되도록 합니다.
   const { peers } = useRoom(
     roomId,
     user,
-    mediaStatus !== 'loading' && iceServersReady ? localStream : undefined,
+    // 스트림이 준비되었을 때만 useRoom 훅이 실행되도록 합니다.
+    mediaStatus === 'ready' && iceServersReady ? localStream : undefined,
     createPeer,
     addPeer
   );
   
   console.log('[RoomPage] Component rendering.');
   
+  // 미디어 장치를 가져오는 useEffect
   useEffect(() => {
     console.log('[RoomPage] Auth state changed:', { isAuthLoading, user: user ? user.uid : null });
     if (!isAuthLoading && !user) {
@@ -45,20 +42,13 @@ export default function Room() {
     
     console.log('[RoomPage] Media devices effect running.');
     
-    // 이미 스트림이 할당되어 있다면 다시 요청하지 않습니다.
-    if (localStreamRef.current) return;
-
     let isComponentMounted = true;
 
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
         if (isComponentMounted) {
             console.log('[RoomPage] getUserMedia success. Stream acquired.');
-            localStreamRef.current = stream; // Ref에 스트림 인스턴스 저장
             setLocalStream(stream); // State 업데이트로 리렌더링 유발
-            if (userVideo.current) {
-              userVideo.current.srcObject = stream;
-            }
             setMediaStatus('ready');
         }
       })
@@ -71,25 +61,31 @@ export default function Room() {
       });
 
     return () => {
-      // 컴포넌트가 완전히 언마운트될 때만 스트림을 정리합니다.
-      // isComponentMounted 플래그를 사용하여 이중 실행 시의 조기 정리를 방지할 수 있습니다.
       isComponentMounted = false;
-      // 페이지를 떠날 때(컴포넌트 언마운트) 스트림을 확실히 종료합니다.
-      if (localStreamRef.current) {
-        console.log('[RoomPage] Cleaning up and stopping local stream tracks.');
-        localStreamRef.current.getTracks().forEach(track => track.stop());
-        localStreamRef.current = null;
-      }
+      // 컴포넌트 언마운트 시 스트림을 확실히 종료합니다.
+      setLocalStream(currentStream => {
+        if (currentStream) {
+            console.log('[RoomPage] Cleaning up and stopping local stream tracks.');
+            currentStream.getTracks().forEach(track => track.stop());
+        }
+        return null;
+      });
     };
   }, [isAuthLoading, user, router]);
 
+  // ✨ 해결책: localStream이 변경될 때 비디오 엘리먼트에 연결하는 useEffect 추가
+  useEffect(() => {
+    if (localStream && userVideo.current) {
+      console.log('[RoomPage] Attaching local stream to video element.');
+      userVideo.current.srcObject = localStream;
+    }
+  }, [localStream]);
 
   // 통화 미응답/거절 처리 타임아웃
   useEffect(() => {
     if (!user || (mediaStatus !== 'ready' && mediaStatus !== 'spectator')) return;
 
     const timeoutId = setTimeout(() => {
-      // 20초 후에도 피어가 없으면 메인으로 리디렉션
       if (peers.length === 0) {
         console.log('[RoomPage] Timeout: No peers connected after 20 seconds.');
         alert("Call not answered or declined.");
@@ -97,7 +93,6 @@ export default function Room() {
       }
     }, 20000);
 
-    // 피어가 연결되면 타임아웃 해제
     if (peers.length > 0) {
       clearTimeout(timeoutId);
     }
