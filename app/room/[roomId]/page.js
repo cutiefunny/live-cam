@@ -86,6 +86,8 @@ export default function Room() {
         </div>
       );
   }
+
+  const mainPeer = peers[0];
   
   return (
     <div className={styles.container}>
@@ -97,6 +99,7 @@ export default function Room() {
       </header>
       
       <main className={styles.main}>
+        {/* Local Video in Picture-in-Picture */}
         {mediaStatus === 'ready' ? (
             <div className={styles.myVideoContainer}>
                 <video muted ref={userVideo} autoPlay playsInline className={styles.video} />
@@ -108,16 +111,27 @@ export default function Room() {
                 </div>
             </div>
         ) : (
-            <div className={styles.spectatorMode}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={styles.spectatorIcon}><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-              <h3 className={styles.spectatorTitle}>Spectator Mode</h3>
-              <p>You are participating without a camera/microphone.</p>
-            </div>
+          <div className={styles.spectatorPip}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={styles.spectatorIcon}><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <p>Spectator Mode</p>
+          </div>
         )}
         
-        {peers.map(({ peerID, peer, photoURL, displayName }) => (
-          <Video key={peerID} peer={peer} photoURL={photoURL} displayName={displayName} />
-        ))}
+        {/* Main Remote Video */}
+        {mainPeer ? (
+          <div className={styles.remoteVideoContainer}>
+            <Video 
+              key={mainPeer.peerID} 
+              peer={mainPeer.peer} 
+              photoURL={mainPeer.photoURL} 
+              displayName={mainPeer.displayName} 
+            />
+          </div>
+        ) : (
+          <div className={styles.waitingMessage}>
+            <h2>Waiting for other participant...</h2>
+          </div>
+        )}
       </main>
       
       {mediaStatus === 'ready' && (
