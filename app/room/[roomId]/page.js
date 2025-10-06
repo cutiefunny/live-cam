@@ -28,14 +28,20 @@ export default function Room() {
     addPeer
   );
   
+  console.log('[RoomPage] Component rendering.');
+  
   useEffect(() => {
+    console.log('[RoomPage] Auth state changed:', { isAuthLoading, user: user ? user.uid : null });
     if (!isAuthLoading && !user) {
+      console.log('[RoomPage] Not authenticated, redirecting to home.');
       router.push('/');
       return;
     }
     
+    console.log('[RoomPage] Media devices effect running.');
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
+        console.log('[RoomPage] getUserMedia success. Stream acquired.');
         setLocalStream(stream);
         if (userVideo.current) {
           userVideo.current.srcObject = stream;
@@ -43,15 +49,21 @@ export default function Room() {
         setMediaStatus('ready');
       })
       .catch(err => {
-        console.warn("Could not access media devices. Joining as spectator.", err);
+        console.error("[RoomPage] getUserMedia error. Joining as spectator.", err);
         setLocalStream(null);
         setMediaStatus('spectator');
       });
 
     return () => {
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-      }
+      console.log('[RoomPage] Cleaning up media stream effect.');
+      // 컴포넌트 언마운트 시 스트림을 정상적으로 종료하기 위해 state가 아닌 ref를 사용합니다.
+      setLocalStream(currentStream => {
+        if (currentStream) {
+            console.log('[RoomPage] Stopping local stream tracks.');
+            currentStream.getTracks().forEach(track => track.stop());
+        }
+        return null;
+      });
     };
   }, [isAuthLoading, user, router]);
 
@@ -60,26 +72,30 @@ export default function Room() {
     if (!user || (mediaStatus !== 'ready' && mediaStatus !== 'spectator')) return;
 
     const timeoutId = setTimeout(() => {
-      // 20초 후에도 피어가 없으면 메인으로 리디렉션
       if (peers.length === 0) {
+        console.log('[RoomPage] Timeout: No peers connected after 20 seconds.');
         alert("Call not answered or declined.");
         router.push('/');
       }
     }, 20000);
 
-    // 피어가 연결되면 타임아웃 해제
     if (peers.length > 0) {
       clearTimeout(timeoutId);
     }
 
     return () => clearTimeout(timeoutId);
   }, [peers, user, mediaStatus, router]);
+
+  useEffect(() => {
+    console.log('[RoomPage] ICE server status:', { iceServersReady });
+  }, [iceServersReady]);
   
   const handleLeaveRoom = () => {
       router.push('/');
   }
 
   if (isAuthLoading || !user || mediaStatus === 'loading' || !iceServersReady) {
+      console.log('[RoomPage] Showing loading screen:', { isAuthLoading, user: !!user, mediaStatus, iceServersReady });
       return (
         <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh'}}>
             <div style={{fontSize: '1.25rem'}}>Connecting...</div>

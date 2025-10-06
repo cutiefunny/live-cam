@@ -9,13 +9,16 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
 
   useEffect(() => {
     peersRef.current = peers;
+    console.log('[Room] Peers state updated. Current peer IDs:', peers.map(p => p.peerID));
   }, [peers]);
 
   useEffect(() => {
     if (!user || !roomID || localStream === undefined) {
+      console.log('[Room] Main useEffect skipped. Conditions not met:', { hasUser: !!user, hasRoomID: !!roomID, hasLocalStream: localStream !== undefined });
       return;
     }
 
+    console.log('[Room] Main useEffect running. Setting up Firebase listeners for room:', roomID);
     const roomRef = ref(database, `rooms/${roomID}`);
     const usersRef = child(roomRef, 'users');
     const currentUserRef = child(usersRef, user.uid);
@@ -27,7 +30,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
         if(snapshot.exists()) {
             isCurrentUserCreator = true;
             set(child(creatorRef, 'status'), 'busy');
-            // 비정상 종료 시 오프라인으로 처리
             onDisconnect(child(creatorRef, 'status')).set('offline');
         }
     });
@@ -35,11 +37,15 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
     const handleUserJoined = (snapshot) => {
       const otherUserId = snapshot.key;
       const userData = snapshot.val();
+      console.log(`[Room] Event: User ${otherUserId} joined.`, userData);
+      
       if (otherUserId === user.uid) return;
 
       if (user.uid > otherUserId) {
+        console.log(`[Room] Current user (${user.uid}) is initiator. Calling createPeer for ${otherUserId}.`);
         setPeers(currentPeers => {
           if (currentPeers.some(p => p.peerID === otherUserId)) {
+            console.log(`[Room] Peer for ${otherUserId} already exists. Skipping createPeer.`);
             return currentPeers;
           }
           const peer = createPeer(otherUserId, localStream);
@@ -57,6 +63,8 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
 
     const handleSignal = (snapshot) => {
       const { senderId, signal, senderPhotoURL, senderDisplayName } = snapshot.val();
+      console.log(`[Room] Event: Received signal from ${senderId}.`);
+
       if (senderId === user.uid) {
         remove(snapshot.ref);
         return;
@@ -65,11 +73,13 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
       const peerToSignal = peersRef.current.find(p => p.peerID === senderId);
 
       if (peerToSignal) {
+        console.log(`[Room] Found existing peer for ${senderId}. Signaling...`);
         if (peerToSignal.peer && !peerToSignal.peer.destroyed) {
           peerToSignal.peer.signal(signal);
         }
       } else {
         if (signal.type === 'offer' && user.uid < senderId) {
+          console.log(`[Room] No existing peer. Current user (${user.uid}) is receiver. Calling addPeer for ${senderId}.`);
           setPeers(currentPeers => {
             if (currentPeers.some(p => p.peerID === senderId)) {
               return currentPeers;
@@ -91,6 +101,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
 
     const handleUserLeft = (snapshot) => {
       const removedUserId = snapshot.key;
+      console.log(`[Room] Event: User ${removedUserId} left.`);
       const peerToRemove = peersRef.current.find(p => p.peerID === removedUserId);
       
       if (peerToRemove && peerToRemove.peer && !peerToRemove.peer.destroyed) {
@@ -100,6 +111,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
       setPeers(currentPeers => currentPeers.filter(p => p.peerID !== removedUserId));
     };
     
+    console.log(`[Room] User ${user.uid} setting presence in room ${roomID}.`);
     set(currentUserRef, { photoURL: user.photoURL, displayName: user.displayName });
     onDisconnect(currentUserRef).remove();
     
@@ -108,6 +120,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
     const signalListener = onChildAdded(signalsRef, handleSignal);
 
     return () => {
+      console.log(`[Room] Cleaning up room ${roomID} for user ${user.uid}.`);
       off(usersRef, 'child_added', userJoinedListener);
       off(usersRef, 'child_removed', userLeftListener);
       off(signalsRef, 'child_added', signalListener);
@@ -115,9 +128,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
       remove(currentUserRef);
       
       if (isCurrentUserCreator) {
-          // 방을 나갈 때 설정했던 onDisconnect는 취소하고,
           onDisconnect(child(creatorRef, 'status')).cancel();
-          // 다시 'online' 상태로 되돌립니다.
           set(child(creatorRef, 'status'), 'online');
       }
       
@@ -133,7 +144,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer) {
         get(usersRef).then((snapshot) => {
           if (!snapshot.exists()) {
             remove(roomRef);
-            console.log(`Room ${roomID} was empty and has been deleted.`);
+            console.log(`[Room] Room ${roomID} was empty and has been deleted.`);
           }
         });
       }, 5000); 

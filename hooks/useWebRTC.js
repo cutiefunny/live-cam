@@ -5,75 +5,94 @@ import { push, set, ref } from 'firebase/database';
 import { database } from '@/lib/firebase';
 
 export function useWebRTC(user, roomID) {
-  // 기본 STUN 서버 목록으로 iceServers 상태를 초기화합니다.
-  // 이렇게 하면 TURN 서버를 가져오기 전이나 실패했을 때도 항상 기본 설정이 유지됩니다.
-  const [iceServers, setIceServers] = useState([
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-  ]);
+  // iceServers 상태를 관리합니다. 초기값은 빈 배열입니다.
+  const [iceServers, setIceServers] = useState([]);
 
-  // 컴포넌트가 마운트될 때 API로부터 TURN 서버 정보를 비동기적으로 가져옵니다.
+  // 컴포넌트가 마운트될 때 API로부터 TURN 서버 정보를 가져옵니다.
   useEffect(() => {
-    const fetchTurnServers = async () => {
+    console.log('[WebRTC] Hook mounted. Fetching ICE servers...');
+    const fetchIceServers = async () => {
       try {
         const response = await fetch('/api/turn');
         if (!response.ok) {
-          throw new Error('Failed to fetch TURN servers');
+          throw new Error('Failed to fetch ICE servers');
         }
         const data = await response.json();
-        console.log("Successfully fetched TURN servers from Twilio.");
-        // 기존 STUN 서버 목록에 가져온 TURN 서버 정보를 추가합니다.
-        setIceServers(prevServers => [...prevServers, ...data.iceServers]);
+        console.log('[WebRTC] Successfully fetched ICE servers from Twilio:', data.iceServers);
+        setIceServers(data.iceServers);
       } catch (error) {
-        // TURN 서버 가져오기에 실패해도 기본 STUN 서버로 연결을 시도할 수 있습니다.
-        console.warn("Could not fetch TURN servers. Proceeding with STUN only.", error);
+        console.error("[WebRTC] Could not fetch ICE servers. Using STUN only.", error);
+        // 실패 시 기본 STUN 서버만 사용합니다.
+        const stunServers = [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+        ];
+        console.log('[WebRTC] Falling back to STUN servers:', stunServers);
+        setIceServers(stunServers);
       }
     };
 
-    fetchTurnServers();
-  }, []); // 이 useEffect는 컴포넌트 마운트 시 한 번만 실행됩니다.
+    fetchIceServers();
+  }, []); // 이 useEffect는 한 번만 실행됩니다.
 
   const createPeer = useCallback((otherUserID, stream) => {
+    console.log(`[WebRTC] createPeer called for user: ${otherUserID}`);
+    if (iceServers.length === 0) {
+        console.warn('[WebRTC] createPeer aborted: ICE servers not ready.');
+        return null;
+    }
+    console.log('[WebRTC] Creating peer with ICE servers:', iceServers);
+
     const peer = new Peer({
       initiator: true,
       trickle: false,
       stream,
-      config: { iceServers }, // 항상 STUN 서버가 포함된 설정 사용
+      config: { iceServers }, // 상태에 저장된 서버 정보 사용
     });
 
     peer.on('signal', (signal) => {
+      console.log(`[WebRTC] 'signal' event (offer) for ${otherUserID}`);
       const signalRef = push(ref(database, `rooms/${roomID}/signals/${otherUserID}`));
       set(signalRef, { senderId: user.uid, signal, senderPhotoURL: user.photoURL, senderDisplayName: user.displayName });
     });
     
-    peer.on('connect', () => console.log(`[${user.displayName}] Connection established with ${otherUserID}`));
-    peer.on('error', (err) => console.error(`[${user.displayName}] Connection error with ${otherUserID}:`, err));
+    peer.on('connect', () => console.log(`[WebRTC] 'connect' event: Connection established with ${otherUserID}`));
+    peer.on('stream', (remoteStream) => console.log(`[WebRTC] 'stream' event: Received remote stream from ${otherUserID}`, remoteStream));
+    peer.on('close', () => console.log(`[WebRTC] 'close' event: Connection closed with ${otherUserID}`));
+    peer.on('error', (err) => console.error(`[WebRTC] 'error' event with ${otherUserID}:`, err));
 
     return peer;
   }, [user, roomID, iceServers]);
 
   const addPeer = useCallback((incomingSignal, senderId, stream) => {
+    console.log(`[WebRTC] addPeer called for user: ${senderId}`);
+    if (iceServers.length === 0) {
+      console.warn('[WebRTC] addPeer aborted: ICE servers not ready.');
+      return null;
+    }
+    console.log('[WebRTC] Adding peer with ICE servers:', iceServers);
+
     const peer = new Peer({
       initiator: false,
       trickle: false,
       stream,
-      config: { iceServers }, // 항상 STUN 서버가 포함된 설정 사용
+      config: { iceServers }, // 상태에 저장된 서버 정보 사용
     });
 
     peer.on('signal', (signal) => {
+      console.log(`[WebRTC] 'signal' event (answer) for ${senderId}`);
       const signalRef = push(ref(database, `rooms/${roomID}/signals/${senderId}`));
       set(signalRef, { senderId: user.uid, signal, senderPhotoURL: user.photoURL, senderDisplayName: user.displayName });
     });
 
-    peer.on('connect', () => console.log(`[${user.displayName}] Connection established with ${senderId}`));
-    peer.on('error', (err) => console.error(`[${user.displayName}] Connection error with ${senderId}:`, err));
+    peer.on('connect', () => console.log(`[WebRTC] 'connect' event: Connection established with ${senderId}`));
+    peer.on('stream', (remoteStream) => console.log(`[WebRTC] 'stream' event: Received remote stream from ${senderId}`, remoteStream));
+    peer.on('close', () => console.log(`[WebRTC] 'close' event: Connection closed with ${senderId}`));
+    peer.on('error', (err) => console.error(`[WebRTC] 'error' event with ${senderId}:`, err));
 
     peer.signal(incomingSignal);
     return peer;
   }, [user, roomID, iceServers]);
   
-  // iceServers가 항상 기본값을 가지므로, iceServersReady는 항상 true입니다.
-  return { createPeer, addPeer, iceServersReady: true };
+  return { createPeer, addPeer, iceServersReady: iceServers.length > 0 };
 }
