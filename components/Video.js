@@ -4,32 +4,45 @@ import styles from './Video.module.css';
 
 const Video = ({ peer, photoURL, displayName }) => {
   const ref = useRef();
+  // MediaStream 객체를 안정적으로 참조하기 위해 ref를 사용합니다.
+  const streamRef = useRef(new MediaStream());
 
   useEffect(() => {
-    const handleStream = (stream) => {
+    if (!peer) return;
+
+    // 'track' 이벤트 핸들러: 상대방으로부터 비디오/오디오 트랙을 수신할 때마다 호출됩니다.
+    const handleTrack = (track, stream) => {
+      console.log('[Video.js] Received remote track:', track);
+      // 기존에 같은 종류(video/audio)의 트랙이 있다면 제거하고 새로 추가합니다.
+      const existingTracks = streamRef.current.getTracks();
+      existingTracks.forEach(t => {
+        if (t.kind === track.kind) {
+          streamRef.current.removeTrack(t);
+        }
+      });
+      
+      streamRef.current.addTrack(track);
+
       if (ref.current) {
-        ref.current.srcObject = stream;
+        // 비디오 요소에 스트림을 연결합니다.
+        ref.current.srcObject = streamRef.current;
         ref.current.play().catch(error => {
             console.error('Error attempting to play remote video:', error);
         });
       }
     };
 
-    if (peer) {
-      // 'stream' 이벤트 리스너를 등록합니다.
-      peer.on('stream', handleStream);
-      
-      // ✨ [수정] 컴포넌트가 렌더링되는 시점에 스트림이 이미 도착했는지 확인합니다.
-      // 만약 'stream' 이벤트를 놓쳤더라도 여기서 스트림을 연결할 수 있습니다.
-      if (peer.streams && peer.streams[0]) {
-        handleStream(peer.streams[0]);
-      }
-    }
+    peer.on('track', handleTrack);
 
+    // 컴포넌트가 언마운트되거나 peer가 변경될 때 실행되는 정리 함수
     return () => {
-      if (peer) {
-        peer.off('stream', handleStream);
+      peer.off('track', handleTrack);
+      // 스트림과 트랙을 정리하여 메모리 누수를 방지합니다.
+      if (ref.current && ref.current.srcObject) {
+        ref.current.srcObject = null;
       }
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = new MediaStream();
     };
   }, [peer]);
 

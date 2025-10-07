@@ -45,7 +45,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
       }).then(({ committed }) => {
         if (committed) {
           console.log(`[Coin] Successfully paid out ${amount} coins to creator ${creatorId}.`);
-          
           get(ref(database, `users/${creatorId}`)).then(snapshot => {
             const creatorData = snapshot.val() || {};
             const coinHistoryRef = ref(database, 'coin_history');
@@ -64,43 +63,43 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
     };
 
     const deductCoin = (userId, peerId, amount, description) => {
-      const userCoinRef = ref(database, `users/${userId}/coins`);
-      runTransaction(userCoinRef, (currentCoins) => {
-        if (currentCoins === null || currentCoins < amount) {
-          return; 
-        }
-        return currentCoins - amount;
-      }).then(({ committed }) => {
-        if (committed) {
-          console.log(`[Coin] Successfully deducted ${amount} coins from ${userId}.`);
-          
-          if (description !== '통화 시작') {
-            const payoutAmount = Math.floor(costPerMinute * (creatorShareRate / 100));
-            payoutToCreator(peerId, userId, payoutAmount);
+      return new Promise((resolve) => {
+        const userCoinRef = ref(database, `users/${userId}/coins`);
+        runTransaction(userCoinRef, (currentCoins) => {
+          if (currentCoins === null || currentCoins < amount) {
+            return; // 트랜잭션 중단 (잔액 부족)
           }
+          return currentCoins - amount;
+        }).then(({ committed }) => {
+          if (committed) {
+            console.log(`[Coin] Successfully deducted ${amount} coins from ${userId}.`);
+            
+            if (description !== '통화 시작') {
+              const payoutAmount = Math.floor(costPerMinute * (creatorShareRate / 100));
+              payoutToCreator(peerId, userId, payoutAmount);
+            }
 
-          const coinHistoryRef = ref(database, 'coin_history');
-          push(coinHistoryRef, {
-            userId: userId,
-            userName: user.displayName,
-            userEmail: user.email,
-            type: 'use',
-            amount: amount,
-            timestamp: Date.now(),
-            description: description === '통화 시작' ? description : `Video call with ${peerId}`
-          });
-        } else {
-          console.log(`[Coin] Failed to deduct coins for ${userId}. Not enough coins.`);
-          const peerToDisconnect = peersRef.current.find(p => p.peerID === peerId);
-          if (peerToDisconnect && peerToDisconnect.peer && !peerToDisconnect.peer.destroyed) {
-            peerToDisconnect.peer.destroy();
+            const coinHistoryRef = ref(database, 'coin_history');
+            push(coinHistoryRef, {
+              userId: userId,
+              userName: user.displayName,
+              userEmail: user.email,
+              type: 'use',
+              amount: amount,
+              timestamp: Date.now(),
+              description: description === '통화 시작' ? description : `Video call with ${peerId}`
+            });
+            resolve(true);
+          } else {
+            console.log(`[Coin] Failed to deduct coins for ${userId}. Not enough coins.`);
+            resolve(false);
           }
-        }
+        });
       });
     };
     
     const setupPeerListeners = (peer, peerID, peerData) => {
-      peer.on('connect', () => {
+      peer.on('connect', async () => {
         console.log(`Call connected with ${peerID}. Recording start time.`);
         callStateRef.current[peerID] = {
             startTime: Date.now(),
@@ -109,14 +108,25 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
 
         const isInitiator = user.uid > peerID;
         if (isInitiator) {
-          console.log(`[Coin] Starting coin deduction for call with ${peerID}.`);
-          
+          console.log(`[Coin] Initiating coin logic for call with ${peerID}.`);
+
+          let success = true;
           if (costToStart > 0) {
-            deductCoin(user.uid, peerID, costToStart, '통화 시작');
+            success = await deductCoin(user.uid, peerID, costToStart, '통화 시작');
+          }
+
+          if (!success) {
+            console.log(`[Coin] Initial charge failed. Terminating call with ${peerID}.`);
+            peer.destroy();
+            return;
           }
           
-          const intervalId = setInterval(() => {
-            deductCoin(user.uid, peerID, costPerMinute, `Video call minute charge`);
+          const intervalId = setInterval(async () => {
+            const minuteSuccess = await deductCoin(user.uid, peerID, costPerMinute, `Video call minute charge`);
+            if (!minuteSuccess) {
+              console.log(`[Coin] Per-minute charge failed. Terminating call with ${peerID}.`);
+              peer.destroy();
+            }
           }, 60000);
           
           coinDeductionIntervalsRef.current[peerID] = intervalId;
