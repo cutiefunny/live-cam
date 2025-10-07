@@ -1,0 +1,61 @@
+/* components/GiftModal.module.css */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modalContent {
+  background-color: #1f2937;
+  padding: 2rem;
+  border-radius: 0.75rem;
+  text-align: center;
+  width: 90%;
+  max-width: 400px;
+}
+
+.giftGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.giftItem {
+  background-color: #374151;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.2s;
+  border: none;
+  color: white;
+}
+.giftItem:hover:not(:disabled) {
+  background-color: #4b5563;
+  transform: translateY(-2px);
+}
+.giftItem:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.giftIcon {
+  font-size: 2.5rem;
+}
+
+.giftName {
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
+.giftCost {
+  margin-top: 0.25rem;
+  color: #f59e0b;
+}

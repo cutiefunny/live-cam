@@ -2,6 +2,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link'; // ✨ [추가]
 import { nanoid } from 'nanoid';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
@@ -36,7 +37,6 @@ export default function Home() {
   const { settings, isLoading: isSettingsLoading } = useSettings();
   const router = useRouter();
 
-  // Zustand 스토어에서 상태와 액션을 직접 가져옵니다.
   const {
     user,
     isAuthLoading,
@@ -180,7 +180,10 @@ export default function Home() {
                   <div key={creator.uid} className={styles.creatorItem}>
                     <div className={styles.creatorInfo}>
                       <img src={creator.photoURL} alt={creator.displayName} className={styles.creatorAvatar} />
-                      <span>{creator.displayName}</span>
+                      {/* ✨ [수정] Link 컴포넌트로 감싸기 */}
+                      <Link href={`/creator/${creator.uid}`} className={styles.creatorNameLink}>
+                        {creator.displayName}
+                      </Link>
                     </div>
                     <button onClick={() => handleCallCreator(creator)} className={styles.callButton}>Call</button>
                   </div>

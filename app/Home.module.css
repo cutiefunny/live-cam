@@ -151,6 +151,18 @@
     gap: 0.75rem;
 }
 
+/* ✨ [추가] 크리에이터 이름 링크 스타일 */
+.creatorNameLink {
+  color: #e5e7eb;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+.creatorNameLink:hover {
+  color: #a5b4fc;
+  text-decoration: underline;
+}
+
 .creatorAvatar {
     width: 32px;
     height: 32px;
@@ -181,8 +193,8 @@
   padding: 0.5rem;
   border-radius: 0.5rem;
   transition: background-color 0.2s;
-  background-color: transparent; /* ✨ 수정: 기본 배경 투명 */
-  border: none; /* ✨ 수정: 테두리 없음 */
+  background-color: transparent;
+  border: none;
 }
 .coinInfo:hover {
     background-color: #374151;
@@ -318,6 +330,22 @@
 .logoutButton:hover {
   background-color: #b91c1c;
 }
+
+/* ✨ [추가] 내 크리에이터 프로필 버튼 스타일 */
+.myProfileButton {
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  background-color: #16a34a;
+  color: white;
+  margin-bottom: 1rem;
+}
+.myProfileButton:hover {
+  background-color: #15803d;
+}
+
 
 /* --- 코인 충전 모달 스타일 --- */
 .coinPackageGrid {

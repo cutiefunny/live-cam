@@ -1,11 +1,13 @@
 // components/ProfileModal.js
 'use client';
 import { useState, useRef } from 'react';
+import { useRouter } from 'next/navigation'; // ✨ [추가]
 import useAppStore from '@/store/useAppStore';
 import styles from '@/app/Home.module.css';
 
 export default function ProfileModal({ user, onClose, onUpdateProfile, onLogout }) {
-    const { showToast } = useAppStore();
+    const router = useRouter(); // ✨ [추가]
+    const { showToast, isCreator } = useAppStore();
     const [displayName, setDisplayName] = useState(user.displayName || '');
     const [newAvatarFile, setNewAvatarFile] = useState(null);
     const [avatarPreview, setAvatarPreview] = useState(user.photoURL);
@@ -45,6 +47,12 @@ export default function ProfileModal({ user, onClose, onUpdateProfile, onLogout 
         }
     };
 
+    // ✨ [추가] 내 프로필 페이지로 이동하는 함수
+    const goToMyProfile = () => {
+        router.push(`/creator/${user.uid}`);
+        onClose();
+    };
+
     return (
         <div className={styles.modalOverlay} onClick={onClose}>
             <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
@@ -78,6 +86,14 @@ export default function ProfileModal({ user, onClose, onUpdateProfile, onLogout 
                         />
                     </div>
                 </div>
+
+                {/* ✨ [수정] 크리에이터인 경우에만 '내 프로필' 버튼 표시 */}
+                {isCreator && (
+                    <button onClick={goToMyProfile} className={styles.myProfileButton}>
+                        내 크리에이터 프로필
+                    </button>
+                )}
+                
                 <div className={styles.modalActions}>
                     <button onClick={handleSave} disabled={isSaving} className={styles.saveButton}>
                         {isSaving ? '저장 중...' : '저장'}

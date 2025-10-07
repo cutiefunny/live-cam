@@ -142,3 +142,55 @@
   position: relative;
   z-index: 200;
 }
+
+/* ✨ [추가] 선물하기 버튼 스타일 */
+.giftButton {
+  background-color: #374151;
+  border: none;
+  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  font-size: 1.5rem;
+  cursor: pointer;
+  margin-left: 1rem;
+  transition: background-color 0.2s;
+}
+.giftButton:hover {
+  background-color: #4b5563;
+}
+
+/* ✨ [추가] 선물 애니메이션 스타일 */
+.giftAnimationOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  pointer-events: none;
+}
+.giftAnimationContent {
+  text-align: center;
+  animation: gift-pop 3s forwards;
+}
+.giftAnimationContent .giftIcon {
+  font-size: 6rem;
+}
+.giftAnimationContent p {
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 1rem;
+  margin-top: 1rem;
+}
+
+@keyframes gift-pop {
+  0% { transform: scale(0); opacity: 0; }
+  10% { transform: scale(1.2); opacity: 1; }
+  20% { transform: scale(1); opacity: 1; }
+  80% { transform: scale(1) translateY(0); opacity: 1; }
+  100% { transform: scale(1) translateY(-30px); opacity: 0; }
+}

@@ -1,7 +1,7 @@
 // hooks/useAuth.js
 import { useEffect } from 'react';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as firebaseSignOut, updateProfile } from "firebase/auth";
-import { ref, set, onValue, off, onDisconnect, get, remove, update, push } from 'firebase/database';
+import { ref, set, onValue, off, onDisconnect, get, remove, update, push, runTransaction } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, database, storage } from '@/lib/firebase';
 import { processImageForUpload } from '@/lib/imageUtils';
@@ -47,7 +47,6 @@ export function useAuth() {
       await remove(ref(database, `creators/${user.uid}`));
     }
     await firebaseSignOut(auth);
-    // Zustand 상태는 onAuthStateChanged 리스너가 null로 설정합니다.
   };
   
   const goOnline = async () => {
@@ -99,8 +98,6 @@ export function useAuth() {
       
       await update(ref(database), updates);
       
-      // onAuthStateChanged가 변경을 감지하고 전역 상태를 업데이트합니다.
-      // 즉시 UI 업데이트를 위해 수동으로 상태를 업데이트 할 수도 있습니다.
       setUser({ ...user, displayName: newDisplayName, photoURL: newPhotoURL });
       
     } catch (error) {
@@ -123,11 +120,69 @@ export function useAuth() {
       amount: amount,
       price: price,
       timestamp: Date.now(),
-      status: 'pending', // 'pending', 'approved', 'rejected'
+      status: 'pending',
     });
   };
 
-  // useAuth 훅은 이제 상태 대신 액션 함수들을 주로 반환합니다.
-  // 상태는 useAppStore를 통해 컴포넌트에서 직접 구독합니다.
-  return { signIn, signOut, goOnline, goOffline, updateUserProfile, requestCoinCharge };
+  // ✨ [추가] 선물하기 함수
+  const sendGift = async (fromUserId, toUserId, gift, roomId) => {
+    const { cost } = gift;
+    const userCoinRef = ref(database, `users/${fromUserId}/coins`);
+    const settingsRef = ref(database, 'settings');
+
+    const settingsSnapshot = await get(settingsRef);
+    const creatorShareRate = settingsSnapshot.val()?.creatorShareRate || 90;
+    const payoutAmount = Math.floor(cost * (creatorShareRate / 100));
+
+    // 1. 사용자 코인 차감
+    const { committed } = await runTransaction(userCoinRef, (currentCoins) => {
+      if (currentCoins < cost) {
+        return; // 잔액 부족으로 중단
+      }
+      return currentCoins - cost;
+    });
+
+    if (!committed) {
+      throw new Error("Not enough coins");
+    }
+
+    // 2. 크리에이터에게 코인 지급
+    const creatorCoinRef = ref(database, `users/${toUserId}/coins`);
+    await runTransaction(creatorCoinRef, (currentCoins) => (currentCoins || 0) + payoutAmount);
+
+    // 3. 실시간 이벤트 전송 (애니메이션용)
+    const roomGiftsRef = ref(database, `rooms/${roomId}/gifts`);
+    await push(roomGiftsRef, {
+      ...gift,
+      senderId: fromUserId,
+      senderName: user.displayName,
+      timestamp: Date.now(),
+    });
+    
+    // 4. 코인 사용 내역 기록
+    const coinHistoryRef = ref(database, 'coin_history');
+    const fromUserData = await get(ref(database, `users/${fromUserId}`));
+    const toUserData = await get(ref(database, `users/${toUserId}`));
+
+    await push(coinHistoryRef, {
+      userId: fromUserId,
+      userName: fromUserData.val()?.displayName,
+      userEmail: fromUserData.val()?.email,
+      type: 'gift_use',
+      amount: cost,
+      timestamp: Date.now(),
+      description: `${toUserData.val()?.displayName}에게 ${gift.name} 선물`
+    });
+    await push(coinHistoryRef, {
+      userId: toUserId,
+      userName: toUserData.val()?.displayName,
+      userEmail: toUserData.val()?.email,
+      type: 'gift_earn',
+      amount: payoutAmount,
+      timestamp: Date.now(),
+      description: `${fromUserData.val()?.displayName}에게 ${gift.name} 선물 받음`
+    });
+  };
+
+  return { signIn, signOut, goOnline, goOffline, updateUserProfile, requestCoinCharge, sendGift };
 }
