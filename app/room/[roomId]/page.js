@@ -4,17 +4,23 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Video from '@/components/Video';
 import Controls from '@/components/Controls';
+import CallQualityIndicator from '@/components/CallQualityIndicator'; // ✨ [추가]
 import { useAuth } from '@/hooks/useAuth';
 import { useWebRTC } from '@/hooks/useWebRTC';
 import { useRoom } from '@/hooks/useRoom';
-import { useSettings } from '@/hooks/useSettings'; // ✨ [추가]
+import { useSettings } from '@/hooks/useSettings';
+import { useCallQuality } from '@/hooks/useCallQuality'; // ✨ [추가]
+import useAppStore from '@/store/useAppStore';
 import styles from './Room.module.css';
 
 export default function Room() {
   const { roomId } = useParams();
   const router = useRouter();
-  const { user, isLoading: isAuthLoading } = useAuth();
-  const { settings, isLoading: isSettingsLoading } = useSettings(); // ✨ [추가]
+  const user = useAppStore((state) => state.user);
+  const isAuthLoading = useAppStore((state) => state.isAuthLoading);
+  const isCreator = useAppStore((state) => state.isCreator);
+
+  const { settings, isLoading: isSettingsLoading } = useSettings();
   const userVideo = useRef();
   
   const [localStream, setLocalStream] = useState(null);
@@ -29,12 +35,15 @@ export default function Room() {
     createPeer,
     addPeer,
     iceServersReady,
-    settings // ✨ [추가] settings를 useRoom 훅으로 전달
+    settings,
+    isCreator
   );
+
+  const mainPeer = peers[0];
+  const callQuality = useCallQuality(mainPeer?.peer); // ✨ [추가]
   
   console.log('[RoomPage] Component rendering.');
   
-  // 1. 미디어 장치(카메라, 마이크) 스트림을 가져오는 useEffect
   useEffect(() => {
     if (isAuthLoading) return;
     if (!user) {
@@ -76,7 +85,6 @@ export default function Room() {
     };
   }, [isAuthLoading, user, router]);
 
-  // ✨ [수정] localStream과 userVideo ref가 모두 준비되면 비디오 요소에 연결하고 재생합니다.
   useEffect(() => {
     if (userVideo.current && localStream && mediaStatus === 'ready') {
       console.log('[RoomPage] Attaching local stream to video element.');
@@ -85,10 +93,8 @@ export default function Room() {
         console.error('Error attempting to play local video:', error);
       });
     }
-    // userVideo.current를 의존성 배열에 추가하여 ref가 설정된 후 이 effect가 실행되도록 합니다.
-  }, [localStream, mediaStatus, userVideo.current]);
+  }, [localStream, mediaStatus]);
 
-  // 통화 미응답/거절 처리 타임아웃
   useEffect(() => {
     if (!user || (mediaStatus !== 'ready' && mediaStatus !== 'spectator') || !iceServersReady) return;
 
@@ -115,7 +121,7 @@ export default function Room() {
       router.push('/');
   }
 
-  if (isAuthLoading || isSettingsLoading || !user || mediaStatus === 'loading' || !iceServersReady) { // ✨ [수정] 로딩 조건 추가
+  if (isAuthLoading || isSettingsLoading || !user || mediaStatus === 'loading' || !iceServersReady) {
       console.log('[RoomPage] Showing loading screen:', { isAuthLoading, isSettingsLoading, user: !!user, mediaStatus, iceServersReady });
       return (
         <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh'}}>
@@ -123,13 +129,12 @@ export default function Room() {
         </div>
       );
   }
-
-  const mainPeer = peers[0];
   
   return (
     <div className={styles.container}>
       <header className={styles.header}>
         <h1 className={styles.roomInfo}>Room: <span className={styles.roomId}>{roomId}</span></h1>
+        {mainPeer && <CallQualityIndicator quality={callQuality} />} {/* ✨ [추가] */}
         <button onClick={handleLeaveRoom} className={styles.exitButton}>
           Leave Room
         </button>

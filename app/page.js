@@ -32,15 +32,31 @@ const IncomingCallModal = ({ callRequest, onAccept, onDecline }) => {
 };
 
 export default function Home() {
-  const { user, signIn, signOut, isLoading: isAuthLoading, isCreator, goOnline, goOffline, updateUserProfile, requestCoinCharge } = useAuth();
+  const { signIn, signOut, goOnline, goOffline, updateUserProfile, requestCoinCharge } = useAuth();
   const { settings, isLoading: isSettingsLoading } = useSettings();
   const router = useRouter();
-  const { creators, setCreators, callRequest, setCallRequest, showToast } = useAppStore();
+
+  // Zustand 스토어에서 상태와 액션을 직접 가져옵니다.
+  const {
+    user,
+    isAuthLoading,
+    isCreator,
+    creators,
+    setCreators,
+    callRequest,
+    setCallRequest,
+    userCoins,
+    setUserCoins,
+    isProfileModalOpen,
+    openProfileModal,
+    closeProfileModal,
+    isCoinModalOpen,
+    openCoinModal,
+    closeCoinModal,
+    showToast
+  } = useAppStore();
 
   const [isOnline, setIsOnline] = useState(false);
-  const [userCoins, setUserCoins] = useState(0);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [isCoinModalOpen, setIsCoinModalOpen] = useState(false);
 
   useEffect(() => {
     const creatorsRef = ref(database, 'creators');
@@ -62,7 +78,7 @@ export default function Home() {
       setUserCoins(snapshot.val() || 0);
     });
     return () => off(userRef, 'value', listener);
-  }, [user]);
+  }, [user, setUserCoins]);
 
   useEffect(() => {
     if (!user || !isCreator) return;
@@ -143,8 +159,8 @@ export default function Home() {
       <Header 
         user={user} 
         userCoins={userCoins}
-        onAvatarClick={() => setIsProfileModalOpen(true)}
-        onCoinClick={() => setIsCoinModalOpen(true)}
+        onAvatarClick={openProfileModal}
+        onCoinClick={openCoinModal}
       />
       <main className={styles.main}>
         <div className={styles.lobbyContainer}>
@@ -177,14 +193,14 @@ export default function Home() {
         {isProfileModalOpen && (
           <ProfileModal 
             user={user}
-            onClose={() => setIsProfileModalOpen(false)}
+            onClose={closeProfileModal}
             onUpdateProfile={updateUserProfile}
             onLogout={signOut}
           />
         )}
         {isCoinModalOpen && (
           <CoinModal
-            onClose={() => setIsCoinModalOpen(false)}
+            onClose={closeCoinModal}
             onRequestCharge={requestCoinCharge}
           />
         )}

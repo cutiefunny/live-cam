@@ -6,6 +6,8 @@ import { database } from '@/lib/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { useAdminData } from '@/hooks/useAdminData';
 import useAppStore from '@/store/useAppStore';
+import { useFilters } from '@/hooks/useFilters';
+import { usePagination } from '@/hooks/usePagination';
 import UserManagementModal from '@/components/admin/UserManagementModal';
 import DashboardTab from './tabs/DashboardTab';
 import MembersTab from './tabs/MembersTab';
@@ -16,7 +18,7 @@ import ChargeRequestsTab from './tabs/ChargeRequestsTab';
 import styles from '@/components/admin/Admin.module.css';
 
 export default function AdminPage() {
-  const { user, isLoading: isAuthLoading } = useAuth();
+  const { user } = useAuth(); // ✨ [수정] isAuthLoading은 더 이상 필요하지 않습니다.
   const { 
     onlineCreators, 
     callHistory, 
@@ -27,7 +29,6 @@ export default function AdminPage() {
     isLoading: isAdminDataLoading 
   } = useAdminData();
   
-  const [currentPage, setCurrentPage] = useState(1);
   const [selectedUser, setSelectedUser] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [generalSearchTerm, setGeneralSearchTerm] = useState('');
@@ -41,8 +42,22 @@ export default function AdminPage() {
   const [chargeRequests, setChargeRequests] = useState([]);
 
   const showToast = useAppStore((state) => state.showToast);
-  const usersPerPage = 10;
   
+  const {
+    filteredCreatorUsers,
+    filteredGeneralUsers,
+    filteredCallHistory,
+    filteredCoinHistory,
+  } = useFilters(usersWithRoles, callHistory, coinHistory, creatorSearchTerm, generalSearchTerm, historySearchTerm, historySearchFilter, coinHistorySearchTerm, coinHistoryFilter);
+
+  const {
+    currentPage,
+    totalPages,
+    paginate,
+    currentUsers: currentGeneralUsers,
+    setCurrentPage
+  } = usePagination(filteredGeneralUsers, 10);
+
   useEffect(() => {
     const settingsRef = ref(database, 'settings');
     get(settingsRef).then((snapshot) => {
@@ -67,7 +82,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [generalSearchTerm, creatorSearchTerm]);
+  }, [generalSearchTerm, creatorSearchTerm, setCurrentPage]);
 
   const handleSaveSettings = async (newSettings) => {
     if (newSettings.costPerMinute < 1 || newSettings.creatorShareRate < 0 || newSettings.creatorShareRate > 100 || newSettings.costToStart < 0) {
@@ -127,7 +142,8 @@ export default function AdminPage() {
       type: amount > 0 ? 'admin_give' : 'admin_take',
       amount: Math.abs(amount),
       timestamp: Date.now(),
-      description: `관리자(${user.email})가 ${amount > 0 ? '지급' : '회수'}`
+      // ✨ [수정] user 객체가 없을 수 있으므로 optional chaining과 기본값을 사용합니다.
+      description: `관리자(${user?.email || 'Public Admin'})가 ${amount > 0 ? '지급' : '회수'}`
     };
     await push(coinHistoryRef, historyLog);
 
@@ -177,57 +193,13 @@ export default function AdminPage() {
     }
   };
 
-  const filteredCreatorUsers = usersWithRoles.filter(user => 
-    user.isCreator &&
-    (
-      user.displayName?.toLowerCase().includes(creatorSearchTerm.toLowerCase()) ||
-      user.email?.toLowerCase().includes(creatorSearchTerm.toLowerCase())
-    )
-  );
-
-  const filteredGeneralUsers = usersWithRoles.filter(user => 
-    !user.isCreator &&
-    (
-      user.displayName?.toLowerCase().includes(generalSearchTerm.toLowerCase()) ||
-      user.email?.toLowerCase().includes(generalSearchTerm.toLowerCase())
-    )
-  );
-  
-  const filteredCallHistory = callHistory.filter(call => {
-    const searchTermLower = historySearchTerm.toLowerCase();
-    if (!searchTermLower) return true;
-
-    const callerMatch = call.callerName?.toLowerCase().includes(searchTermLower);
-    const calleeMatch = call.calleeName?.toLowerCase().includes(searchTermLower);
-
-    switch (historySearchFilter) {
-      case 'caller':
-        return callerMatch;
-      case 'callee':
-        return calleeMatch;
-      default: // 'all'
-        return callerMatch || calleeMatch;
-    }
-  });
-
-  const filteredCoinHistory = coinHistory.filter(log => {
-    const typeMatch = coinHistoryFilter === 'all' || log.type === coinHistoryFilter;
-    const searchTermLower = coinHistorySearchTerm.toLowerCase();
-    const userMatch = log.userName?.toLowerCase().includes(searchTermLower) ||
-                      log.userEmail?.toLowerCase().includes(searchTermLower);
-    return typeMatch && userMatch;
-  });
-
-  const indexOfLastUser = currentPage * usersPerPage;
-  const indexOfFirstUser = indexOfLastUser - usersPerPage;
-  const currentGeneralUsers = filteredGeneralUsers.slice(indexOfFirstUser, indexOfLastUser);
-  const totalPages = Math.ceil(filteredGeneralUsers.length / usersPerPage);
-  const paginate = (pageNumber) => setCurrentPage(pageNumber);
-
-  if (isAuthLoading || isAdminDataLoading || !appSettings) {
+  // ✨ [수정] isAuthLoading 확인 로직 제거
+  if (isAdminDataLoading || !appSettings) {
     return <div className={styles.container}>Loading...</div>;
   }
   
+  // ✨ [수정] 접근 제한 로직 제거
+  /*
   if (!user || user.email !== 'cutiefunny@gmail.com') {
     return (
       <div className={styles.container}>
@@ -236,6 +208,7 @@ export default function AdminPage() {
       </div>
     );
   }
+  */
 
   return (
     <div className={styles.container}>

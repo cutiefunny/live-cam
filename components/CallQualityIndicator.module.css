@@ -1,0 +1,48 @@
+/* components/CallQualityIndicator.module.css */
+.container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: rgba(17, 24, 39, 0.7);
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+}
+
+.iconContainer {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 16px;
+}
+
+.bar {
+  display: inline-block;
+  width: 4px;
+  background-color: #4b5563; /* Default color */
+  border-radius: 2px;
+}
+
+.iconContainer .bar:nth-child(1) { height: 6px; }
+.iconContainer .bar:nth-child(2) { height: 10px; }
+.iconContainer .bar:nth-child(3) { height: 14px; }
+
+/* Good quality */
+.good .bar {
+  background-color: #22c55e; /* green-500 */
+}
+
+/* Average quality */
+.average .bar:nth-child(1) { background-color: #f97316; } /* orange-500 */
+.average .bar:nth-child(2) { background-color: #f97316; }
+.average .bar:nth-child(3) { background-color: #4b5563; }
+
+/* Poor quality */
+.poor .bar:nth-child(1) { background-color: #ef4444; } /* red-500 */
+.poor .bar:nth-child(2) { background-color: #4b5563; }
+.poor .bar:nth-child(3) { background-color: #4b5563; }
+
+.text {
+  font-size: 0.75rem;
+  color: #d1d5db; /* gray-300 */
+  font-weight: 500;
+}

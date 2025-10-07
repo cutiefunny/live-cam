@@ -3,11 +3,17 @@ import { useState, useEffect, useRef } from 'react';
 import { ref, onChildAdded, onChildRemoved, set, remove, onDisconnect, get, child, off, push, runTransaction } from 'firebase/database';
 import { database } from '@/lib/firebase';
 
-export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServersReady, settings) {
+// ✨ [수정] isCreator prop을 전달받도록 변경
+export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServersReady, settings, isCreator) {
   const [peers, setPeers] = useState([]);
   const peersRef = useRef([]);
   const callStateRef = useRef({});
   const coinDeductionIntervalsRef = useRef({});
+  const isCreatorRef = useRef(isCreator); // ✨ [추가] cleanup 함수에서 isCreator 값을 참조하기 위한 ref
+
+  useEffect(() => {
+    isCreatorRef.current = isCreator;
+  }, [isCreator]);
 
   useEffect(() => {
     peersRef.current = peers;
@@ -28,15 +34,12 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
     const currentUserRef = child(usersRef, user.uid);
     const signalsRef = ref(database, `rooms/${roomID}/signals/${user.uid}`);
     
+    // ✨ [수정] isCreator prop을 직접 사용하여 크리에이터 상태 설정
     const creatorRef = ref(database, `creators/${user.uid}`);
-    let isCurrentUserCreator = false;
-    get(creatorRef).then(snapshot => {
-        if(snapshot.exists()) {
-            isCurrentUserCreator = true;
-            set(child(creatorRef, 'status'), 'busy');
-            onDisconnect(child(creatorRef, 'status')).set('offline');
-        }
-    });
+    if (isCreator) {
+        set(child(creatorRef, 'status'), 'busy');
+        onDisconnect(child(creatorRef, 'status')).set('offline');
+    }
 
     const payoutToCreator = (creatorId, fromUserId, amount) => {
       const creatorCoinRef = ref(database, `users/${creatorId}/coins`);
@@ -106,13 +109,14 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
             startTime: Date.now(),
             peerData: peerData
         };
-
-        const isInitiator = user.uid > peerID;
-        if (isInitiator) {
-          console.log(`[Coin] Initiating coin logic for call with ${peerID}.`);
+        
+        // ✨ [수정] initiator 대신, 크리에이터가 '아닌' 사용자가 코인 로직을 시작하도록 변경
+        if (!isCreator) {
+          console.log(`[Coin] Initiating coin logic for call with ${peerID}. This user is the caller.`);
 
           let success = true;
           if (costToStart > 0) {
+            // `user`는 현재 사용자(발신자), `peerID`는 상대방(수신자)
             success = await deductCoin(user.uid, peerID, costToStart, '통화 시작');
           }
 
@@ -146,23 +150,22 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
         const callInfo = callStateRef.current[peerID];
         if (callInfo && callInfo.startTime) {
             const duration = Date.now() - callInfo.startTime;
-            const isInitiator = user.uid > peerID;
             
-            // ✨ [수정] 통화 시간이 0초여도 기록을 남기도록 변경
-            if (isInitiator) {
+            // ✨ [수정] initiator 대신, 크리에이터가 '아닌' 사용자가 통화 기록을 남기도록 변경
+            if (!isCreator) {
               const historyRef = ref(database, 'call_history');
               
               const callRecord = {
-                  callerId: user.uid,
+                  callerId: user.uid, // `user`는 현재 사용자, 즉 발신자
                   callerName: user.displayName,
-                  calleeId: peerID,
+                  calleeId: peerID, // `peerID`는 상대방, 즉 수신자
                   calleeName: callInfo.peerData.displayName,
                   roomId: roomID,
                   timestamp: callInfo.startTime,
                   duration: duration
               };
               push(historyRef, callRecord);
-              console.log('[Room] Call history saved by initiator.');
+              console.log('[Room] Call history saved by caller.');
             }
             delete callStateRef.current[peerID];
         }
@@ -235,7 +238,8 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
       Object.values(coinDeductionIntervalsRef.current).forEach(clearInterval);
       coinDeductionIntervalsRef.current = {};
 
-      if (isCurrentUserCreator) {
+      // ✨ [수정] isCreatorRef의 현재 값을 사용하여 크리에이터 상태 복원
+      if (isCreatorRef.current) {
           onDisconnect(child(creatorRef, 'status')).cancel();
           set(child(creatorRef, 'status'), 'online');
       }
@@ -256,7 +260,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
         });
       }, 5000); 
     };
-  }, [roomID, user, localStream, createPeer, addPeer, iceServersReady, settings]);
+  }, [roomID, user, localStream, createPeer, addPeer, iceServersReady, settings, isCreator]); // ✨ [수정] isCreator를 의존성 배열에 추가
   
   return { peers };
 }

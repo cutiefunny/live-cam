@@ -1,44 +1,37 @@
 // hooks/useAuth.js
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as firebaseSignOut, updateProfile } from "firebase/auth";
-import { ref, set, onValue, off, onDisconnect, get, remove, update, runTransaction, push } from 'firebase/database';
+import { ref, set, onValue, off, onDisconnect, get, remove, update, push } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, database, storage } from '@/lib/firebase';
 import { processImageForUpload } from '@/lib/imageUtils';
+import useAppStore from '@/store/useAppStore';
 
 export function useAuth() {
-  const [user, setUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isCreator, setIsCreator] = useState(false);
+  const { user, setUser, setIsCreator, setIsAuthLoading } = useAppStore();
 
-  // ✨ [수정] Firebase 인증 상태 리스너와 DB 리스너 로직 분리
   useEffect(() => {
-    // 1. 인증 상태 변경 감지
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      setIsLoading(false);
+      setIsAuthLoading(false);
     });
-    // 인증 리스너 정리
     return () => unsubscribeAuth();
-  }, []);
+  }, [setUser, setIsAuthLoading]);
 
   useEffect(() => {
-    // 2. 사용자 객체가 있을 때만 DB에서 역할 정보 감지
     if (!user) {
       setIsCreator(false);
-      return; // 사용자가 없으면 아무것도 안 함
+      return;
     }
 
     const userRef = ref(database, `users/${user.uid}`);
-    // 역할 정보 리스너 등록
     const unsubscribeDB = onValue(userRef, (snapshot) => {
       const isUserCreator = snapshot.exists() && snapshot.val().isCreator === true;
       setIsCreator(isUserCreator);
     });
 
-    // 사용자가 바뀌거나 컴포넌트가 언마운트될 때 DB 리스너 정리
     return () => unsubscribeDB();
-  }, [user]); // user 객체가 변경될 때마다 이 useEffect가 실행됨
+  }, [user, setIsCreator]);
 
   const signIn = async () => {
     const provider = new GoogleAuthProvider();
@@ -54,12 +47,13 @@ export function useAuth() {
       await remove(ref(database, `creators/${user.uid}`));
     }
     await firebaseSignOut(auth);
-    setUser(null);
-    setIsCreator(false);
+    // Zustand 상태는 onAuthStateChanged 리스너가 null로 설정합니다.
   };
   
   const goOnline = async () => {
+    const { isCreator } = useAppStore.getState();
     if (!user || !isCreator) return;
+
     const creatorRef = ref(database, `creators/${user.uid}`);
     await set(creatorRef, {
         uid: user.uid,
@@ -104,7 +98,9 @@ export function useAuth() {
       }
       
       await update(ref(database), updates);
-
+      
+      // onAuthStateChanged가 변경을 감지하고 전역 상태를 업데이트합니다.
+      // 즉시 UI 업데이트를 위해 수동으로 상태를 업데이트 할 수도 있습니다.
       setUser({ ...user, displayName: newDisplayName, photoURL: newPhotoURL });
       
     } catch (error) {
@@ -131,5 +127,7 @@ export function useAuth() {
     });
   };
 
-  return { user, isLoading, isCreator, signIn, signOut, goOnline, goOffline, updateUserProfile, requestCoinCharge };
+  // useAuth 훅은 이제 상태 대신 액션 함수들을 주로 반환합니다.
+  // 상태는 useAppStore를 통해 컴포넌트에서 직접 구독합니다.
+  return { signIn, signOut, goOnline, goOffline, updateUserProfile, requestCoinCharge };
 }
