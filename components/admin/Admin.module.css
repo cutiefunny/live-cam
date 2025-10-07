@@ -333,3 +333,23 @@
   background-color: #374151;
   color: white;
 }
+
+.dashboardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
+.gridItem {
+  background-color: #1f2937;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+}
+
+.chartContainer {
+  height: 300px; /* 차트 높이 지정 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

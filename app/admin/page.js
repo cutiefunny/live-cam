@@ -7,7 +7,10 @@ import { useAuth } from '@/hooks/useAuth';
 import { useAdminData } from '@/hooks/useAdminData';
 import useAppStore from '@/store/useAppStore';
 import UserManagementModal from '@/components/admin/UserManagementModal';
-import { formatDuration } from '@/lib/utils';
+import DashboardTab from './tabs/DashboardTab';
+import MembersTab from './tabs/MembersTab';
+import HistoryTab from './tabs/HistoryTab';
+import CoinsTab from './tabs/CoinsTab';
 import styles from '@/components/admin/Admin.module.css';
 
 export default function AdminPage() {
@@ -18,6 +21,7 @@ export default function AdminPage() {
     usersWithRoles, 
     setUsersWithRoles,
     coinHistory,
+    dashboardData,
     isLoading: isAdminDataLoading 
   } = useAdminData();
   
@@ -30,7 +34,6 @@ export default function AdminPage() {
   const [historySearchFilter, setHistorySearchFilter] = useState('all');
   const [coinHistorySearchTerm, setCoinHistorySearchTerm] = useState('');
   const [coinHistoryFilter, setCoinHistoryFilter] = useState('all');
-
   const [activeTab, setActiveTab] = useState('dashboard'); 
 
   const showToast = useAppStore((state) => state.showToast);
@@ -164,251 +167,53 @@ export default function AdminPage() {
           onUpdateCoins={handleUpdateCoins}
         />
       )}
-
-      <h1 className={styles.title}>관리자 페이지</h1>
-
+      
       <div className={styles.tabNav}>
-        <button 
-          className={`${styles.tabButton} ${activeTab === 'dashboard' ? styles.active : ''}`}
-          onClick={() => setActiveTab('dashboard')}
-        >
-          대시보드
-        </button>
-        <button 
-          className={`${styles.tabButton} ${activeTab === 'members' ? styles.active : ''}`}
-          onClick={() => setActiveTab('members')}
-        >
-          회원 목록
-        </button>
-        <button 
-          className={`${styles.tabButton} ${activeTab === 'history' ? styles.active : ''}`}
-          onClick={() => setActiveTab('history')}
-        >
-          통화 내역
-        </button>
-        <button 
-          className={`${styles.tabButton} ${activeTab === 'coins' ? styles.active : ''}`}
-          onClick={() => setActiveTab('coins')}
-        >
-          코인 내역
-        </button>
+        <button className={`${styles.tabButton} ${activeTab === 'dashboard' ? styles.active : ''}`} onClick={() => setActiveTab('dashboard')}>대시보드</button>
+        <button className={`${styles.tabButton} ${activeTab === 'members' ? styles.active : ''}`} onClick={() => setActiveTab('members')}>회원 목록</button>
+        <button className={`${styles.tabButton} ${activeTab === 'history' ? styles.active : ''}`} onClick={() => setActiveTab('history')}>통화 내역</button>
+        <button className={`${styles.tabButton} ${activeTab === 'coins' ? styles.active : ''}`} onClick={() => setActiveTab('coins')}>코인 내역</button>
       </div>
 
       <div className={styles.tabContent}>
-        {activeTab === 'dashboard' && (
-          <div className={styles.section}>
-            <h2 className={styles.sectionTitle}>온라인 크리에이터 ({onlineCreators.length})</h2>
-            <div className={styles.tableContainer}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Avatar</th>
-                    <th>Display Name</th>
-                    <th>UID</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {onlineCreators.map((creator) => (
-                    <tr key={creator.uid}>
-                      <td><img src={creator.photoURL} alt={creator.displayName} className={styles.avatar} /></td>
-                      <td>{creator.displayName}</td>
-                      <td>{creator.uid}</td>
-                      <td><span className={`${styles.status} ${styles[creator.status]}`}>{creator.status}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
+        {activeTab === 'dashboard' && <DashboardTab onlineCreators={onlineCreators} dashboardData={dashboardData} />}
+        
         {activeTab === 'members' && (
-          <>
-            <div className={styles.section}>
-              <div className={styles.sectionHeader}>
-                  <h2 className={styles.sectionTitle}>크리에이터 회원 목록 ({filteredCreatorUsers.length})</h2>
-                  <input 
-                      type="text"
-                      placeholder="이름 또는 이메일로 검색..."
-                      value={creatorSearchTerm}
-                      onChange={(e) => setCreatorSearchTerm(e.target.value)}
-                      className={styles.searchInput}
-                  />
-              </div>
-              <div className={styles.tableContainer}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Avatar</th>
-                      <th>Display Name</th>
-                      <th>Email</th>
-                      <th>Coins</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredCreatorUsers.map((member) => (
-                      <tr key={member.uid} onClick={() => { setSelectedUser(member); setIsModalOpen(true); }} className={styles.clickableRow}>
-                        <td><img src={member.photoURL || '/images/icon.png'} alt={member.displayName} className={styles.avatar} /></td>
-                        <td>{member.displayName || 'N/A'}</td>
-                        <td>{member.email}</td>
-                        <td>{member.coins}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className={styles.section}>
-              <div className={styles.sectionHeader}>
-                  <h2 className={styles.sectionTitle}>일반 회원 목록 ({filteredGeneralUsers.length})</h2>
-                  <input 
-                      type="text"
-                      placeholder="이름 또는 이메일로 검색..."
-                      value={generalSearchTerm}
-                      onChange={(e) => setGeneralSearchTerm(e.target.value)}
-                      className={styles.searchInput}
-                  />
-              </div>
-              <div className={styles.tableContainer}>
-                <table className={styles.table}>
-                    <thead>
-                    <tr>
-                        <th>Avatar</th>
-                        <th>Display Name</th>
-                        <th>Email</th>
-                        <th>Coins</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {currentGeneralUsers.map((member) => (
-                        <tr key={member.uid} onClick={() => { setSelectedUser(member); setIsModalOpen(true); }} className={styles.clickableRow}>
-                        <td><img src={member.photoURL || '/images/icon.png'} alt={member.displayName} className={styles.avatar} /></td>
-                        <td>{member.displayName || 'N/A'}</td>
-                        <td>{member.email}</td>
-                        <td>{member.coins}</td>
-                        </tr>
-                    ))}
-                    </tbody>
-                </table>
-              </div>
-              <div className={styles.pagination}>
-                <button onClick={() => paginate(currentPage - 1)} disabled={currentPage === 1}>
-                    &laquo; Prev
-                </button>
-                <span> Page {currentPage} of {totalPages} </span>
-                <button onClick={() => paginate(currentPage + 1)} disabled={currentPage === totalPages || totalPages === 0}>
-                    Next &raquo;
-                </button>
-              </div>
-            </div>
-          </>
+          <MembersTab 
+            creatorUsers={filteredCreatorUsers}
+            generalUsers={filteredGeneralUsers}
+            creatorSearchTerm={creatorSearchTerm}
+            setCreatorSearchTerm={setCreatorSearchTerm}
+            generalSearchTerm={generalSearchTerm}
+            setGeneralSearchTerm={setGeneralSearchTerm}
+            onUserClick={(user) => { setSelectedUser(user); setIsModalOpen(true); }}
+            pagination={{
+              currentPage,
+              totalPages,
+              paginate,
+              currentGeneralUsers
+            }}
+          />
         )}
 
         {activeTab === 'history' && (
-          <div className={styles.section}>
-            <div className={styles.sectionHeader}>
-                <h2 className={styles.sectionTitle}>통화 내역 ({filteredCallHistory.length})</h2>
-                <div className={styles.searchContainer}>
-                    <select
-                        value={historySearchFilter}
-                        onChange={(e) => setHistorySearchFilter(e.target.value)}
-                        className={styles.searchFilter}
-                    >
-                        <option value="all">전체</option>
-                        <option value="caller">발신자</option>
-                        <option value="callee">수신자</option>
-                    </select>
-                    <input 
-                        type="text"
-                        placeholder="이름으로 검색..."
-                        value={historySearchTerm}
-                        onChange={(e) => setHistorySearchTerm(e.target.value)}
-                        className={styles.searchInput}
-                    />
-                </div>
-            </div>
-            <div className={styles.tableContainer}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Caller</th>
-                    <th>Callee</th>
-                    <th>Time</th>
-                    <th>Duration</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredCallHistory.map((call) => (
-                    <tr key={call.id}>
-                      <td>{call.callerName}</td>
-                      <td>{call.calleeName}</td>
-                      <td>{new Date(call.timestamp).toLocaleString()}</td>
-                      <td>{formatDuration(call.duration)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <HistoryTab
+            callHistory={filteredCallHistory}
+            searchTerm={historySearchTerm}
+            setSearchTerm={setHistorySearchTerm}
+            filter={historySearchFilter}
+            setFilter={setHistorySearchFilter}
+          />
         )}
         
         {activeTab === 'coins' && (
-            <div className={styles.section}>
-                <div className={styles.sectionHeader}>
-                    <h2 className={styles.sectionTitle}>코인 변동 내역 ({filteredCoinHistory.length})</h2>
-                    <div className={styles.searchContainer}>
-                        <select
-                            value={coinHistoryFilter}
-                            onChange={(e) => setCoinHistoryFilter(e.target.value)}
-                            className={styles.searchFilter}
-                        >
-                            <option value="all">전체 타입</option>
-                            <option value="admin_give">지급</option>
-                            <option value="admin_take">회수</option>
-                        </select>
-                        <input 
-                            type="text"
-                            placeholder="사용자 이름으로 검색..."
-                            value={coinHistorySearchTerm}
-                            onChange={(e) => setCoinHistorySearchTerm(e.target.value)}
-                            className={styles.searchInput}
-                        />
-                    </div>
-                </div>
-                <div className={styles.tableContainer}>
-                    <table className={styles.table}>
-                        <thead>
-                            <tr>
-                                <th>User</th>
-                                <th>Type</th>
-                                <th>Amount</th>
-                                <th>Date</th>
-                                <th>Description</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredCoinHistory.map((log) => (
-                                <tr key={log.id}>
-                                    <td>{log.userName}</td>
-                                    <td>
-                                        <span className={`${styles.logType} ${styles[log.type]}`}>
-                                            {log.type.replace('_', ' ')}
-                                        </span>
-                                    </td>
-                                    <td className={styles[log.type]}>
-                                        {log.type.includes('give') || log.type.includes('charge') ? '+' : '-'}
-                                        {log.amount}
-                                    </td>
-                                    <td>{new Date(log.timestamp).toLocaleString()}</td>
-                                    <td>{log.description}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+          <CoinsTab
+            coinHistory={filteredCoinHistory}
+            searchTerm={coinHistorySearchTerm}
+            setSearchTerm={setCoinHistorySearchTerm}
+            filter={coinHistoryFilter}
+            setFilter={setCoinHistoryFilter}
+          />
         )}
       </div>
     </div>
