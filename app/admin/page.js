@@ -1,7 +1,7 @@
 // app/admin/page.js
 'use client';
 import { useState, useEffect } from 'react';
-import { ref, update, runTransaction, push } from 'firebase/database';
+import { ref, update, runTransaction, push, get, set } from 'firebase/database';
 import { database } from '@/lib/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { useAdminData } from '@/hooks/useAdminData';
@@ -11,6 +11,7 @@ import DashboardTab from './tabs/DashboardTab';
 import MembersTab from './tabs/MembersTab';
 import HistoryTab from './tabs/HistoryTab';
 import CoinsTab from './tabs/CoinsTab';
+import SettingsTab from './tabs/SettingsTab';
 import styles from '@/components/admin/Admin.module.css';
 
 export default function AdminPage() {
@@ -35,13 +36,38 @@ export default function AdminPage() {
   const [coinHistorySearchTerm, setCoinHistorySearchTerm] = useState('');
   const [coinHistoryFilter, setCoinHistoryFilter] = useState('all');
   const [activeTab, setActiveTab] = useState('dashboard'); 
+  const [appSettings, setAppSettings] = useState(null);
 
   const showToast = useAppStore((state) => state.showToast);
   const usersPerPage = 10;
+
+  useEffect(() => {
+    const settingsRef = ref(database, 'settings');
+    get(settingsRef).then((snapshot) => {
+      if (snapshot.exists()) {
+        setAppSettings(snapshot.val());
+      } else {
+        // ✨ [수정] 기본값에 costToStart 추가
+        setAppSettings({ costToStart: 0, costPerMinute: 10, creatorShareRate: 90 });
+      }
+    });
+  }, []);
   
   useEffect(() => {
     setCurrentPage(1);
   }, [generalSearchTerm, creatorSearchTerm]);
+
+  const handleSaveSettings = async (newSettings) => {
+    // ✨ [수정] 유효성 검사에 costToStart 추가
+    if (newSettings.costToStart < 0 || newSettings.costPerMinute < 1 || newSettings.creatorShareRate < 0 || newSettings.creatorShareRate > 100) {
+      showToast('유효하지 않은 값입니다.', 'error');
+      return;
+    }
+    const settingsRef = ref(database, 'settings');
+    await set(settingsRef, newSettings);
+    setAppSettings(newSettings);
+    showToast('설정이 성공적으로 저장되었습니다.', 'success');
+  };
 
   const handleToggleCreator = async (member) => {
     const userRef = ref(database, `users/${member.uid}`);
@@ -144,7 +170,7 @@ export default function AdminPage() {
   const totalPages = Math.ceil(filteredGeneralUsers.length / usersPerPage);
   const paginate = (pageNumber) => setCurrentPage(pageNumber);
 
-  if (isAuthLoading || isAdminDataLoading) {
+  if (isAuthLoading || isAdminDataLoading || !appSettings) {
     return <div className={styles.container}>Loading...</div>;
   }
   
@@ -173,6 +199,7 @@ export default function AdminPage() {
         <button className={`${styles.tabButton} ${activeTab === 'members' ? styles.active : ''}`} onClick={() => setActiveTab('members')}>회원 목록</button>
         <button className={`${styles.tabButton} ${activeTab === 'history' ? styles.active : ''}`} onClick={() => setActiveTab('history')}>통화 내역</button>
         <button className={`${styles.tabButton} ${activeTab === 'coins' ? styles.active : ''}`} onClick={() => setActiveTab('coins')}>코인 내역</button>
+        <button className={`${styles.tabButton} ${activeTab === 'settings' ? styles.active : ''}`} onClick={() => setActiveTab('settings')}>설정</button>
       </div>
 
       <div className={styles.tabContent}>
@@ -213,6 +240,13 @@ export default function AdminPage() {
             setSearchTerm={setCoinHistorySearchTerm}
             filter={coinHistoryFilter}
             setFilter={setCoinHistoryFilter}
+          />
+        )}
+
+        {activeTab === 'settings' && (
+          <SettingsTab 
+            initialSettings={appSettings}
+            onSave={handleSaveSettings}
           />
         )}
       </div>

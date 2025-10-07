@@ -3,11 +3,58 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: center; /* 콘텐츠를 수직 중앙 정렬합니다. */
   min-height: 100vh;
-  padding: 1rem;
+  padding: 64px 1.5rem 1.5rem; /* 헤더 높이(64px)만큼 상단 패딩을 주고, 좌우/하단 패딩을 추가합니다. */
 }
 
+/* --- 헤더 스타일 --- */
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background-color: #1f2937; /* bg-gray-800 */
+  border-bottom: 1px solid #374151; /* border-gray-700 */
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  padding: 0 1.5rem;
+}
+
+.headerContent {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logo {
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+.userInfoHeader {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.avatarButton {
+  background: none;
+  padding: 0;
+  border-radius: 9999px;
+  overflow: hidden;
+  width: 40px;
+  height: 40px;
+  border: 2px solid #4f46e5;
+  cursor: pointer;
+}
+
+/* --- 로그인 페이지 스타일 --- */
 .loginContainer {
   text-align: center;
 }
@@ -35,63 +82,50 @@
   background-color: #1d4ed8; /* hover:bg-blue-700 */
 }
 
+/* --- 로비 컨테이너 스타일 --- */
 .lobbyContainer {
   width: 100%;
-  max-width: 32rem; /* Increased max-width */
-  background-color: #1f2937; /* bg-gray-800 */
+  max-width: 32rem;
+  background-color: #1f2937;
   padding: 2rem;
   border-radius: 0.75rem;
   box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
 }
 
-.userInfo {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid #374151; /* border-gray-700 */
+.userAvatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
-.userAvatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 9999px;
+.createButton, .goOfflineButton {
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
 }
 
 .createButton {
-  width: 100%;
-  padding: 0.75rem 1.5rem;
-  background-color: #4f46e5; /* bg-indigo-600 */
+  background-color: #4f46e5;
   color: white;
-  border-radius: 0.5rem;
-  font-size: 1rem;
-  font-weight: 600;
-  margin-bottom: 1.5rem;
 }
 .createButton:hover {
-  background-color: #4338ca; /* hover:bg-indigo-700 */
+  background-color: #4338ca;
 }
 
 .goOfflineButton {
-  width: 100%;
-  padding: 0.75rem 1.5rem;
-  background-color: #dc2626; /* bg-red-600 */
+  background-color: #dc2626;
   color: white;
-  border-radius: 0.5rem;
-  font-size: 1rem;
-  font-weight: 600;
-  margin-bottom: 1.5rem;
 }
-
 .goOfflineButton:hover {
-  background-color: #b91c1c; /* hover:bg-red-700 */
+  background-color: #b91c1c;
 }
 
 .creatorListTitle {
   font-size: 1.25rem;
   font-weight: bold;
-  margin-top: 1.5rem;
   margin-bottom: 1rem;
   text-align: left;
 }
@@ -106,7 +140,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background-color: #374151; /* bg-gray-700 */
+  background-color: #374151;
   padding: 0.75rem 1rem;
   border-radius: 0.5rem;
 }
@@ -125,22 +159,27 @@
 
 .callButton {
   padding: 0.5rem 1rem;
-  background-color: #16a34a; /* bg-green-600 */
+  background-color: #16a34a;
   color: white;
   border-radius: 0.5rem;
   font-weight: 600;
   font-size: 0.875rem;
 }
 .callButton:hover {
-  background-color: #15803d; /* hover:bg-green-700 */
+  background-color: #15803d;
 }
 .callButton:disabled {
-  background-color: #4b5563; /* bg-gray-600 */
+  background-color: #4b5563;
   cursor: not-allowed;
   opacity: 0.7;
 }
 
-/* 통화 수신 모달 스타일 */
+.coinInfo {
+  font-size: 0.9rem;
+  color: #f59e0b; /* Amber 500 */
+}
+
+/* --- 모달 공통 스타일 --- */
 .modalOverlay {
     position: fixed;
     top: 0;
@@ -155,13 +194,13 @@
 }
 
 .modalContent {
-    background-color: #1f2937; /* bg-gray-800 */
+    background-color: #1f2937;
     padding: 2rem;
     border-radius: 0.75rem;
     text-align: center;
     box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
     width: 90%;
-    max-width: 320px;
+    max-width: 400px;
 }
 
 .modalProfileImage {
@@ -169,6 +208,7 @@
     height: 80px;
     border-radius: 9999px;
     margin: 1rem auto;
+    object-fit: cover;
 }
 
 .modalActions {
@@ -178,35 +218,94 @@
     justify-content: center;
 }
 
-.acceptButton {
+.acceptButton, .declineButton {
     padding: 0.75rem 1.5rem;
-    background-color: #16a34a; /* bg-green-600 */
-    color: white;
     border-radius: 0.5rem;
     font-weight: 600;
+    color: white;
+}
+
+.acceptButton {
+    background-color: #16a34a;
 }
 .acceptButton:hover {
     background-color: #15803d;
 }
 
 .declineButton {
-    padding: 0.75rem 1.5rem;
-    background-color: #dc2626; /* bg-red-600 */
-    color: white;
-    border-radius: 0.5rem;
-    font-weight: 600;
+    background-color: #dc2626;
 }
 .declineButton:hover {
     background-color: #b91c1c;
 }
 
-/* 사용하지 않는 이전 스타일 숨김 처리 */
-.joinForm, .divider, .lobbyTitle, .joinInput, .joinButton {
-  display: none;
+/* --- 프로필 모달 전용 스타일 --- */
+.profileEditSection {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem; /* 간격 조정 */
+  text-align: left;
+  margin-bottom: 1.5rem; /* 하단 마진 추가 */
 }
 
-.coinInfo {
+.avatarUploadSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.avatarEditButton {
+  padding: 0.5rem 1rem;
+  background-color: #4f46e5;
+  color: white;
+  border-radius: 0.5rem;
   font-size: 0.875rem;
-  color: #f59e0b; /* Amber 500 */
-  margin-top: 0.25rem;
+}
+.avatarEditButton:hover {
+  background-color: #4338ca;
+}
+
+.profileInputGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.profileInputGroup label {
+  font-size: 0.875rem;
+  color: #9ca3af;
+}
+.profileInput {
+  padding: 0.5rem 0.8rem;
+  border-radius: 0.375rem;
+  border: 1px solid #4b5563;
+  background-color: #374151;
+  color: white;
+  width: 100%;
+}
+
+.saveButton {
+  background-color: #2563eb;
+  color: white;
+  padding: 0.6rem 1.2rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+}
+.saveButton:disabled {
+  background-color: #4b5563;
+  cursor: not-allowed;
+}
+.saveButton:hover:not(:disabled) {
+  background-color: #1d4ed8;
+}
+
+.logoutButton {
+  background-color: #dc2626;
+  color: white;
+  padding: 0.6rem 1.2rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+}
+.logoutButton:hover {
+  background-color: #b91c1c;
 }

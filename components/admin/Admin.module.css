@@ -353,3 +353,20 @@
   align-items: center;
   justify-content: center;
 }
+
+.settingRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 0;
+  border-bottom: 1px solid #374151;
+}
+
+.settingRow:last-of-type {
+  border-bottom: none;
+}
+
+.settingRow label {
+  font-weight: 500;
+  color: #d1d5db;
+}

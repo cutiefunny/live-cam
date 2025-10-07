@@ -7,12 +7,14 @@ import Controls from '@/components/Controls';
 import { useAuth } from '@/hooks/useAuth';
 import { useWebRTC } from '@/hooks/useWebRTC';
 import { useRoom } from '@/hooks/useRoom';
+import { useSettings } from '@/hooks/useSettings'; // ✨ [추가]
 import styles from './Room.module.css';
 
 export default function Room() {
   const { roomId } = useParams();
   const router = useRouter();
   const { user, isLoading: isAuthLoading } = useAuth();
+  const { settings, isLoading: isSettingsLoading } = useSettings(); // ✨ [추가]
   const userVideo = useRef();
   
   const [localStream, setLocalStream] = useState(null);
@@ -26,7 +28,8 @@ export default function Room() {
     localStream,
     createPeer,
     addPeer,
-    iceServersReady
+    iceServersReady,
+    settings // ✨ [추가] settings를 useRoom 훅으로 전달
   );
   
   console.log('[RoomPage] Component rendering.');
@@ -112,8 +115,8 @@ export default function Room() {
       router.push('/');
   }
 
-  if (isAuthLoading || !user || mediaStatus === 'loading' || !iceServersReady) {
-      console.log('[RoomPage] Showing loading screen:', { isAuthLoading, user: !!user, mediaStatus, iceServersReady });
+  if (isAuthLoading || isSettingsLoading || !user || mediaStatus === 'loading' || !iceServersReady) { // ✨ [수정] 로딩 조건 추가
+      console.log('[RoomPage] Showing loading screen:', { isAuthLoading, isSettingsLoading, user: !!user, mediaStatus, iceServersReady });
       return (
         <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh'}}>
             <div style={{fontSize: '1.25rem'}}>Connecting...</div>

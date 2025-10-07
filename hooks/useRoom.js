@@ -1,12 +1,14 @@
 // hooks/useRoom.js
 import { useState, useEffect, useRef } from 'react';
-import { ref, onChildAdded, onChildRemoved, set, remove, onDisconnect, get, child, off, push } from 'firebase/database';
+import { ref, onChildAdded, onChildRemoved, set, remove, onDisconnect, get, child, off, push, runTransaction } from 'firebase/database';
 import { database } from '@/lib/firebase';
 
-export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServersReady) {
+// ✨ [수정] settings를 props로 받도록 변경
+export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServersReady, settings) {
   const [peers, setPeers] = useState([]);
   const peersRef = useRef([]);
   const callStateRef = useRef({});
+  const coinDeductionIntervalsRef = useRef({});
 
   useEffect(() => {
     peersRef.current = peers;
@@ -14,8 +16,9 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
   }, [peers]);
 
   useEffect(() => {
-    if (!user || !roomID || !localStream || !iceServersReady) {
-      console.log('[Room] Main useEffect skipped. Conditions not met:', { hasUser: !!user, hasRoomID: !!roomID, hasLocalStream: !!localStream, iceServersReady });
+    // ✨ [수정] settings가 로드되었는지 확인하는 조건 추가
+    if (!user || !roomID || !localStream || !iceServersReady || !settings) {
+      console.log('[Room] Main useEffect skipped. Conditions not met:', { hasUser: !!user, hasRoomID: !!roomID, hasLocalStream: !!localStream, iceServersReady, hasSettings: !!settings });
       return;
     }
 
@@ -24,6 +27,8 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
     const usersRef = child(roomRef, 'users');
     const currentUserRef = child(usersRef, user.uid);
     const signalsRef = ref(database, `rooms/${roomID}/signals/${user.uid}`);
+    
+    const { costPerMinute, creatorShareRate } = settings; // ✨ [추가] 설정 값 구조분해 할당
     
     const creatorRef = ref(database, `creators/${user.uid}`);
     let isCurrentUserCreator = false;
@@ -34,6 +39,64 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
             onDisconnect(child(creatorRef, 'status')).set('offline');
         }
     });
+
+    const payoutToCreator = (creatorId, fromUserId, amount) => {
+      const creatorCoinRef = ref(database, `users/${creatorId}/coins`);
+      runTransaction(creatorCoinRef, (currentCoins) => {
+        return (currentCoins || 0) + amount;
+      }).then(({ committed }) => {
+        if (committed) {
+          console.log(`[Coin] Successfully paid out ${amount} coins to creator ${creatorId}.`);
+          const coinHistoryRef = ref(database, 'coin_history');
+          get(child(ref(database, `users/${creatorId}`), 'displayName')).then(snapshot => {
+            const creatorName = snapshot.val() || 'Creator';
+            push(coinHistoryRef, {
+              userId: creatorId,
+              userName: creatorName,
+              type: 'earn',
+              amount: amount,
+              timestamp: Date.now(),
+              description: `Video call with ${fromUserId}`
+            });
+          });
+        }
+      });
+    };
+
+    const deductCoin = (userId, peerId) => {
+      const userCoinRef = ref(database, `users/${userId}/coins`);
+      runTransaction(userCoinRef, (currentCoins) => {
+        if (currentCoins === null) return 0;
+        if (currentCoins < costPerMinute) { // ✨ [수정]
+          return; 
+        }
+        return currentCoins - costPerMinute; // ✨ [수정]
+      }).then(({ committed, snapshot }) => {
+        if (committed) {
+          console.log(`[Coin] Successfully deducted ${costPerMinute} coins from ${userId}.`); // ✨ [수정]
+          
+          // ✨ [수정] 정산 비율에 따라 지급될 코인 계산
+          const payoutAmount = Math.floor(costPerMinute * (creatorShareRate / 100));
+          payoutToCreator(peerId, userId, payoutAmount);
+
+          const coinHistoryRef = ref(database, 'coin_history');
+          push(coinHistoryRef, {
+            userId: userId,
+            userName: user.displayName,
+            type: 'use',
+            amount: costPerMinute, // ✨ [수정]
+            timestamp: Date.now(),
+            description: `Video call with ${peerId}`
+          });
+        } else {
+          console.log(`[Coin] Failed to deduct coins for ${userId}. Not enough coins.`);
+          const peerToDisconnect = peersRef.current.find(p => p.peerID === peerId);
+          if (peerToDisconnect && peerToDisconnect.peer && !peerToDisconnect.peer.destroyed) {
+            peerToDisconnect.peer.destroy();
+          }
+        }
+      });
+    };
     
     const setupPeerListeners = (peer, peerID, peerData) => {
       peer.on('connect', () => {
@@ -42,10 +105,29 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
             startTime: Date.now(),
             peerData: peerData
         };
+
+        const isInitiator = user.uid > peerID;
+        if (isInitiator) {
+          console.log(`[Coin] Starting coin deduction for call with ${peerID}.`);
+          deductCoin(user.uid, peerID); 
+          
+          const intervalId = setInterval(() => {
+            deductCoin(user.uid, peerID);
+          }, 60000);
+          
+          coinDeductionIntervalsRef.current[peerID] = intervalId;
+        }
       });
 
       peer.on('close', () => {
         console.log(`Call with ${peerID} closed. Saving to history.`);
+
+        if (coinDeductionIntervalsRef.current[peerID]) {
+          clearInterval(coinDeductionIntervalsRef.current[peerID]);
+          delete coinDeductionIntervalsRef.current[peerID];
+          console.log(`[Coin] Stopped coin deduction for call with ${peerID}.`);
+        }
+        
         const callInfo = callStateRef.current[peerID];
         if (callInfo && callInfo.startTime) {
             const duration = Date.now() - callInfo.startTime;
@@ -53,7 +135,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
             if (duration > 1000) {
                 const isInitiator = user.uid > peerID;
                 
-                // ✨ [수정] 통화 발신자(initiator)만 통화 기록을 저장하도록 조건 추가
                 if (isInitiator) {
                   const historyRef = ref(database, 'call_history');
                   
@@ -138,6 +219,9 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
       off(signalsRef, 'child_added', signalListener);
       remove(currentUserRef);
       
+      Object.values(coinDeductionIntervalsRef.current).forEach(clearInterval);
+      coinDeductionIntervalsRef.current = {};
+
       if (isCurrentUserCreator) {
           onDisconnect(child(creatorRef, 'status')).cancel();
           set(child(creatorRef, 'status'), 'online');
@@ -159,7 +243,8 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
         });
       }, 5000); 
     };
-  }, [roomID, user, localStream, createPeer, addPeer, iceServersReady]);
+    // ✨ [수정] useEffect의 의존성 배열에 settings 추가
+  }, [roomID, user, localStream, createPeer, addPeer, iceServersReady, settings]);
   
   return { peers };
 }

@@ -1,4 +1,9 @@
 /* app/globals.css */
+/* ✨ [추가] box-sizing을 border-box로 설정하여 패딩과 테두리가 너비/높이에 포함되도록 합니다. */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 body {
   background-color: #111827; /* bg-gray-900 */
   color: #f9fafb; /* text-white */
