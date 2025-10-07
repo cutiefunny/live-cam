@@ -177,6 +177,15 @@
 .coinInfo {
   font-size: 0.9rem;
   color: #f59e0b; /* Amber 500 */
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  transition: background-color 0.2s;
+  background-color: transparent; /* ✨ 수정: 기본 배경 투명 */
+  border: none; /* ✨ 수정: 테두리 없음 */
+}
+.coinInfo:hover {
+    background-color: #374151;
 }
 
 /* --- 모달 공통 스타일 --- */
@@ -243,9 +252,9 @@
 .profileEditSection {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem; /* 간격 조정 */
+  gap: 1.5rem;
   text-align: left;
-  margin-bottom: 1.5rem; /* 하단 마진 추가 */
+  margin-bottom: 1.5rem;
 }
 
 .avatarUploadSection {
@@ -308,4 +317,36 @@
 }
 .logoutButton:hover {
   background-color: #b91c1c;
+}
+
+/* --- 코인 충전 모달 스타일 --- */
+.coinPackageGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.coinPackage {
+  background-color: #374151;
+  padding: 1.5rem 1rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.2s;
+}
+
+.coinPackage:hover {
+  background-color: #4b5563;
+  transform: translateY(-2px);
+}
+
+.coinPackageAmount {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #f59e0b;
+}
+
+.coinPackagePrice {
+  margin-top: 0.5rem;
+  color: #9ca3af;
 }

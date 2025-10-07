@@ -2,14 +2,14 @@
 import React from 'react';
 import styles from '@/app/Home.module.css';
 
-const Header = ({ user, userCoins, onAvatarClick }) => {
+const Header = ({ user, userCoins, onAvatarClick, onCoinClick }) => {
   return (
     <header className={styles.header}>
       <div className={styles.headerContent}>
         <h1 className={styles.logo}>취향캠톡</h1>
         {user && (
           <div className={styles.userInfoHeader}>
-            <span className={styles.coinInfo}>💰 {userCoins} Coins</span>
+            <span className={styles.coinInfo} onClick={onCoinClick}> {userCoins} Coins</span>
             <button onClick={onAvatarClick} className={styles.avatarButton}>
               <img src={user.photoURL} alt={user.displayName} className={styles.userAvatar} />
             </button>

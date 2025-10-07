@@ -20,12 +20,15 @@ const CoinsTab = ({
             className={styles.searchFilter}
           >
             <option value="all">전체 타입</option>
-            <option value="admin_give">지급</option>
-            <option value="admin_take">회수</option>
+            <option value="charge">충전</option>
+            <option value="use">사용</option>
+            <option value="earn">정산</option>
+            <option value="admin_give">관리자 지급</option>
+            <option value="admin_take">관리자 회수</option>
           </select>
           <input
             type="text"
-            placeholder="사용자 이름으로 검색..."
+            placeholder="이름 또는 이메일로 검색..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className={styles.searchInput}
@@ -46,14 +49,14 @@ const CoinsTab = ({
           <tbody>
             {coinHistory.map((log) => (
               <tr key={log.id}>
-                <td>{log.userName}</td>
+                <td>{log.userEmail || log.userName}</td>
                 <td>
                   <span className={`${styles.logType} ${styles[log.type]}`}>
                     {log.type.replace('_', ' ')}
                   </span>
                 </td>
-                <td className={styles[log.type]}>
-                  {log.type.includes('give') || log.type.includes('charge') ? '+' : '-'}
+                <td className={styles[log.type === 'use' || log.type === 'admin_take' ? 'use' : 'charge']}>
+                  {log.type.includes('give') || log.type.includes('charge') || log.type.includes('earn') ? '+' : '-'}
                   {log.amount}
                 </td>
                 <td>{new Date(log.timestamp).toLocaleString()}</td>

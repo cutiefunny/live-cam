@@ -1,7 +1,7 @@
 // hooks/useAuth.js
 import { useState, useEffect } from 'react';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as firebaseSignOut, updateProfile } from "firebase/auth";
-import { ref, set, onValue, off, onDisconnect, get, remove, update } from 'firebase/database';
+import { ref, set, onValue, off, onDisconnect, get, remove, update, runTransaction, push } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, database, storage } from '@/lib/firebase';
 import { processImageForUpload } from '@/lib/imageUtils';
@@ -11,22 +11,34 @@ export function useAuth() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreator, setIsCreator] = useState(false);
 
+  // ✨ [수정] Firebase 인증 상태 리스너와 DB 리스너 로직 분리
   useEffect(() => {
+    // 1. 인증 상태 변경 감지
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setIsLoading(false);
-      if (currentUser) {
-        const userRef = ref(database, `users/${currentUser.uid}`);
-        onValue(userRef, (snapshot) => {
-          const isUserCreator = snapshot.exists() && snapshot.val().isCreator === true;
-          setIsCreator(isUserCreator);
-        }, { onlyOnce: true });
-      } else {
-        setIsCreator(false);
-      }
     });
+    // 인증 리스너 정리
     return () => unsubscribeAuth();
   }, []);
+
+  useEffect(() => {
+    // 2. 사용자 객체가 있을 때만 DB에서 역할 정보 감지
+    if (!user) {
+      setIsCreator(false);
+      return; // 사용자가 없으면 아무것도 안 함
+    }
+
+    const userRef = ref(database, `users/${user.uid}`);
+    // 역할 정보 리스너 등록
+    const unsubscribeDB = onValue(userRef, (snapshot) => {
+      const isUserCreator = snapshot.exists() && snapshot.val().isCreator === true;
+      setIsCreator(isUserCreator);
+    });
+
+    // 사용자가 바뀌거나 컴포넌트가 언마운트될 때 DB 리스너 정리
+    return () => unsubscribeDB();
+  }, [user]); // user 객체가 변경될 때마다 이 useEffect가 실행됨
 
   const signIn = async () => {
     const provider = new GoogleAuthProvider();
@@ -69,24 +81,18 @@ export function useAuth() {
     let newPhotoURL = user.photoURL;
 
     try {
-      // 1. 새 아바타 파일이 있으면 업로드
       if (newAvatarFile) {
-        // 이미지 처리 (리사이즈 & 압축)
         const processedImageBlob = await processImageForUpload(newAvatarFile, 150);
-        
-        // Firebase Storage에 업로드
         const avatarRef = storageRef(storage, `avatars/${user.uid}.avif`);
         const snapshot = await uploadBytes(avatarRef, processedImageBlob);
         newPhotoURL = await getDownloadURL(snapshot.ref);
       }
 
-      // 2. Firebase Auth 프로필 업데이트
       await updateProfile(auth.currentUser, {
         displayName: newDisplayName,
         photoURL: newPhotoURL,
       });
 
-      // 3. Realtime Database 업데이트
       const updates = {};
       updates[`/users/${user.uid}/displayName`] = newDisplayName;
       updates[`/users/${user.uid}/photoURL`] = newPhotoURL;
@@ -99,15 +105,31 @@ export function useAuth() {
       
       await update(ref(database), updates);
 
-      // 4. 로컬 상태 업데이트
       setUser({ ...user, displayName: newDisplayName, photoURL: newPhotoURL });
       
     } catch (error) {
       console.error("Error updating profile:", error);
-      throw error; // 에러를 호출한 곳으로 다시 던져서 UI 처리를 할 수 있게 함
+      throw error;
     }
   };
 
+  const requestCoinCharge = async (amount, price) => {
+    if (!user) throw new Error("User not logged in");
 
-  return { user, isLoading, isCreator, signIn, signOut, goOnline, goOffline, updateUserProfile };
+    const requestsRef = ref(database, 'charge_requests');
+    const newRequestRef = push(requestsRef);
+    
+    await set(newRequestRef, {
+      requestId: newRequestRef.key,
+      userId: user.uid,
+      userName: user.displayName,
+      userEmail: user.email,
+      amount: amount,
+      price: price,
+      timestamp: Date.now(),
+      status: 'pending', // 'pending', 'approved', 'rejected'
+    });
+  };
+
+  return { user, isLoading, isCreator, signIn, signOut, goOnline, goOffline, updateUserProfile, requestCoinCharge };
 }

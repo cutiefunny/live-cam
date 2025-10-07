@@ -3,7 +3,6 @@ import { useState, useEffect, useRef } from 'react';
 import { ref, onChildAdded, onChildRemoved, set, remove, onDisconnect, get, child, off, push, runTransaction } from 'firebase/database';
 import { database } from '@/lib/firebase';
 
-// ✨ [수정] settings를 props로 받도록 변경
 export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServersReady, settings) {
   const [peers, setPeers] = useState([]);
   const peersRef = useRef([]);
@@ -16,19 +15,18 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
   }, [peers]);
 
   useEffect(() => {
-    // ✨ [수정] settings가 로드되었는지 확인하는 조건 추가
     if (!user || !roomID || !localStream || !iceServersReady || !settings) {
       console.log('[Room] Main useEffect skipped. Conditions not met:', { hasUser: !!user, hasRoomID: !!roomID, hasLocalStream: !!localStream, iceServersReady, hasSettings: !!settings });
       return;
     }
 
     console.log('[Room] Main useEffect running. Setting up Firebase listeners for room:', roomID);
+    const { costPerMinute, creatorShareRate, costToStart } = settings;
+
     const roomRef = ref(database, `rooms/${roomID}`);
     const usersRef = child(roomRef, 'users');
     const currentUserRef = child(usersRef, user.uid);
     const signalsRef = ref(database, `rooms/${roomID}/signals/${user.uid}`);
-    
-    const { costPerMinute, creatorShareRate } = settings; // ✨ [추가] 설정 값 구조분해 할당
     
     const creatorRef = ref(database, `creators/${user.uid}`);
     let isCurrentUserCreator = false;
@@ -47,12 +45,14 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
       }).then(({ committed }) => {
         if (committed) {
           console.log(`[Coin] Successfully paid out ${amount} coins to creator ${creatorId}.`);
-          const coinHistoryRef = ref(database, 'coin_history');
-          get(child(ref(database, `users/${creatorId}`), 'displayName')).then(snapshot => {
-            const creatorName = snapshot.val() || 'Creator';
+          
+          get(ref(database, `users/${creatorId}`)).then(snapshot => {
+            const creatorData = snapshot.val() || {};
+            const coinHistoryRef = ref(database, 'coin_history');
             push(coinHistoryRef, {
               userId: creatorId,
-              userName: creatorName,
+              userName: creatorData.displayName || 'Creator',
+              userEmail: creatorData.email || 'N/A',
               type: 'earn',
               amount: amount,
               timestamp: Date.now(),
@@ -63,30 +63,31 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
       });
     };
 
-    const deductCoin = (userId, peerId) => {
+    const deductCoin = (userId, peerId, amount, description) => {
       const userCoinRef = ref(database, `users/${userId}/coins`);
       runTransaction(userCoinRef, (currentCoins) => {
-        if (currentCoins === null) return 0;
-        if (currentCoins < costPerMinute) { // ✨ [수정]
+        if (currentCoins === null || currentCoins < amount) {
           return; 
         }
-        return currentCoins - costPerMinute; // ✨ [수정]
-      }).then(({ committed, snapshot }) => {
+        return currentCoins - amount;
+      }).then(({ committed }) => {
         if (committed) {
-          console.log(`[Coin] Successfully deducted ${costPerMinute} coins from ${userId}.`); // ✨ [수정]
+          console.log(`[Coin] Successfully deducted ${amount} coins from ${userId}.`);
           
-          // ✨ [수정] 정산 비율에 따라 지급될 코인 계산
-          const payoutAmount = Math.floor(costPerMinute * (creatorShareRate / 100));
-          payoutToCreator(peerId, userId, payoutAmount);
+          if (description !== '통화 시작') {
+            const payoutAmount = Math.floor(costPerMinute * (creatorShareRate / 100));
+            payoutToCreator(peerId, userId, payoutAmount);
+          }
 
           const coinHistoryRef = ref(database, 'coin_history');
           push(coinHistoryRef, {
             userId: userId,
             userName: user.displayName,
+            userEmail: user.email,
             type: 'use',
-            amount: costPerMinute, // ✨ [수정]
+            amount: amount,
             timestamp: Date.now(),
-            description: `Video call with ${peerId}`
+            description: description === '통화 시작' ? description : `Video call with ${peerId}`
           });
         } else {
           console.log(`[Coin] Failed to deduct coins for ${userId}. Not enough coins.`);
@@ -109,10 +110,13 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
         const isInitiator = user.uid > peerID;
         if (isInitiator) {
           console.log(`[Coin] Starting coin deduction for call with ${peerID}.`);
-          deductCoin(user.uid, peerID); 
+          
+          if (costToStart > 0) {
+            deductCoin(user.uid, peerID, costToStart, '통화 시작');
+          }
           
           const intervalId = setInterval(() => {
-            deductCoin(user.uid, peerID);
+            deductCoin(user.uid, peerID, costPerMinute, `Video call minute charge`);
           }, 60000);
           
           coinDeductionIntervalsRef.current[peerID] = intervalId;
@@ -207,7 +211,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
       setPeers(currentPeers => currentPeers.filter(p => p.peerID !== removedUserId));
     };
     
-    set(currentUserRef, { photoURL: user.photoURL, displayName: user.displayName });
+    set(currentUserRef, { photoURL: user.photoURL, displayName: user.displayName, email: user.email });
     
     const userJoinedListener = onChildAdded(usersRef, handleUserJoined);
     const userLeftListener = onChildRemoved(usersRef, handleUserLeft);
@@ -243,7 +247,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
         });
       }, 5000); 
     };
-    // ✨ [수정] useEffect의 의존성 배열에 settings 추가
   }, [roomID, user, localStream, createPeer, addPeer, iceServersReady, settings]);
   
   return { peers };

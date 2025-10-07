@@ -1,7 +1,7 @@
 // app/admin/page.js
 'use client';
 import { useState, useEffect } from 'react';
-import { ref, update, runTransaction, push, get, set } from 'firebase/database';
+import { ref, update, runTransaction, push, get, set, onValue, off } from 'firebase/database';
 import { database } from '@/lib/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { useAdminData } from '@/hooks/useAdminData';
@@ -12,6 +12,7 @@ import MembersTab from './tabs/MembersTab';
 import HistoryTab from './tabs/HistoryTab';
 import CoinsTab from './tabs/CoinsTab';
 import SettingsTab from './tabs/SettingsTab';
+import ChargeRequestsTab from './tabs/ChargeRequestsTab';
 import styles from '@/components/admin/Admin.module.css';
 
 export default function AdminPage() {
@@ -37,29 +38,39 @@ export default function AdminPage() {
   const [coinHistoryFilter, setCoinHistoryFilter] = useState('all');
   const [activeTab, setActiveTab] = useState('dashboard'); 
   const [appSettings, setAppSettings] = useState(null);
+  const [chargeRequests, setChargeRequests] = useState([]);
 
   const showToast = useAppStore((state) => state.showToast);
   const usersPerPage = 10;
-
+  
   useEffect(() => {
     const settingsRef = ref(database, 'settings');
     get(settingsRef).then((snapshot) => {
       if (snapshot.exists()) {
         setAppSettings(snapshot.val());
       } else {
-        // ✨ [수정] 기본값에 costToStart 추가
-        setAppSettings({ costToStart: 0, costPerMinute: 10, creatorShareRate: 90 });
+        setAppSettings({ costPerMinute: 10, creatorShareRate: 90, costToStart: 0 });
       }
     });
+
+    const requestsRef = ref(database, 'charge_requests');
+    const listener = onValue(requestsRef, (snapshot) => {
+      const data = snapshot.val();
+      const pendingRequests = data 
+        ? Object.values(data).filter(req => req.status === 'pending')
+        : [];
+      setChargeRequests(pendingRequests.sort((a, b) => a.timestamp - b.timestamp));
+    });
+
+    return () => off(requestsRef, 'value', listener);
   }, []);
-  
+
   useEffect(() => {
     setCurrentPage(1);
   }, [generalSearchTerm, creatorSearchTerm]);
 
   const handleSaveSettings = async (newSettings) => {
-    // ✨ [수정] 유효성 검사에 costToStart 추가
-    if (newSettings.costToStart < 0 || newSettings.costPerMinute < 1 || newSettings.creatorShareRate < 0 || newSettings.creatorShareRate > 100) {
+    if (newSettings.costPerMinute < 1 || newSettings.creatorShareRate < 0 || newSettings.creatorShareRate > 100 || newSettings.costToStart < 0) {
       showToast('유효하지 않은 값입니다.', 'error');
       return;
     }
@@ -111,7 +122,8 @@ export default function AdminPage() {
     const coinHistoryRef = ref(database, 'coin_history');
     const historyLog = {
       userId: member.uid,
-      userName: member.displayName || member.email,
+      userName: member.displayName || 'N/A',
+      userEmail: member.email,
       type: amount > 0 ? 'admin_give' : 'admin_take',
       amount: Math.abs(amount),
       timestamp: Date.now(),
@@ -123,6 +135,46 @@ export default function AdminPage() {
     setUsersWithRoles(prevUsers => prevUsers.map(u => (u.uid === member.uid ? updatedUser : u)));
     setSelectedUser(updatedUser);
     showToast(`${member.displayName || '해당 유저'}님의 코인이 ${finalAmount}개로 변경되었습니다.`, 'success');
+  };
+
+  const handleApproveRequest = async (request) => {
+    const { requestId, userId, amount, userName, userEmail } = request;
+    const userCoinRef = ref(database, `users/${userId}/coins`);
+    
+    try {
+      await runTransaction(userCoinRef, (currentCoins) => (currentCoins || 0) + amount);
+
+      const coinHistoryRef = ref(database, 'coin_history');
+      await push(coinHistoryRef, {
+        userId: userId,
+        userName: userName,
+        userEmail: userEmail,
+        type: 'charge',
+        amount: amount,
+        timestamp: Date.now(),
+        description: '관리자 승인 충전'
+      });
+
+      const requestRef = ref(database, `charge_requests/${requestId}`);
+      await update(requestRef, { status: 'approved' });
+
+      showToast(`${userName}님의 ${amount}코인 충전을 승인했습니다.`, 'success');
+    } catch (error) {
+      showToast('충전 승인 중 오류가 발생했습니다.', 'error');
+      console.error(error);
+    }
+  };
+
+  const handleRejectRequest = async (request) => {
+    const { requestId, userName, amount } = request;
+    const requestRef = ref(database, `charge_requests/${requestId}`);
+    try {
+      await update(requestRef, { status: 'rejected' });
+      showToast(`${userName}님의 ${amount}코인 충전 요청을 거절했습니다.`, 'info');
+    } catch (error) {
+      showToast('요청 거절 중 오류가 발생했습니다.', 'error');
+      console.error(error);
+    }
   };
 
   const filteredCreatorUsers = usersWithRoles.filter(user => 
@@ -160,7 +212,9 @@ export default function AdminPage() {
 
   const filteredCoinHistory = coinHistory.filter(log => {
     const typeMatch = coinHistoryFilter === 'all' || log.type === coinHistoryFilter;
-    const userMatch = log.userName?.toLowerCase().includes(coinHistorySearchTerm.toLowerCase());
+    const searchTermLower = coinHistorySearchTerm.toLowerCase();
+    const userMatch = log.userName?.toLowerCase().includes(searchTermLower) ||
+                      log.userEmail?.toLowerCase().includes(searchTermLower);
     return typeMatch && userMatch;
   });
 
@@ -197,6 +251,9 @@ export default function AdminPage() {
       <div className={styles.tabNav}>
         <button className={`${styles.tabButton} ${activeTab === 'dashboard' ? styles.active : ''}`} onClick={() => setActiveTab('dashboard')}>대시보드</button>
         <button className={`${styles.tabButton} ${activeTab === 'members' ? styles.active : ''}`} onClick={() => setActiveTab('members')}>회원 목록</button>
+        <button className={`${styles.tabButton} ${activeTab === 'charge_requests' ? styles.active : ''}`} onClick={() => setActiveTab('charge_requests')}>
+          충전 요청 {chargeRequests.length > 0 && <span className={styles.badge}>{chargeRequests.length}</span>}
+        </button>
         <button className={`${styles.tabButton} ${activeTab === 'history' ? styles.active : ''}`} onClick={() => setActiveTab('history')}>통화 내역</button>
         <button className={`${styles.tabButton} ${activeTab === 'coins' ? styles.active : ''}`} onClick={() => setActiveTab('coins')}>코인 내역</button>
         <button className={`${styles.tabButton} ${activeTab === 'settings' ? styles.active : ''}`} onClick={() => setActiveTab('settings')}>설정</button>
@@ -220,6 +277,14 @@ export default function AdminPage() {
               paginate,
               currentGeneralUsers
             }}
+          />
+        )}
+
+        {activeTab === 'charge_requests' && (
+          <ChargeRequestsTab 
+            requests={chargeRequests}
+            onApprove={handleApproveRequest}
+            onReject={handleRejectRequest}
           />
         )}
 
