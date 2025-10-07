@@ -204,3 +204,9 @@
 .joinForm, .divider, .lobbyTitle, .joinInput, .joinButton {
   display: none;
 }
+
+.coinInfo {
+  font-size: 0.875rem;
+  color: #f59e0b; /* Amber 500 */
+  margin-top: 0.25rem;
+}

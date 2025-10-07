@@ -2,13 +2,22 @@
 import { create } from 'zustand';
 
 const useAppStore = create((set) => ({
-  // 온라인 크리에이터 목록을 저장하는 상태
+  // 온라인 크리에이터 목록
   creators: [],
   setCreators: (creators) => set({ creators }),
 
-  // 크리에이터에게 들어온 통화 요청 정보를 저장하는 상태
+  // 통화 요청 정보
   callRequest: null,
   setCallRequest: (callRequest) => set({ callRequest }),
+  
+  // ✨ [추가] 팝콘 메시지(Toast) 상태
+  toast: {
+    message: '',
+    type: 'info', // 'info', 'success', 'error'
+    visible: false,
+  },
+  showToast: (message, type = 'info') => set({ toast: { message, type, visible: true } }),
+  hideToast: () => set(state => ({ toast: { ...state.toast, visible: false } })),
 }));
 
 export default useAppStore;

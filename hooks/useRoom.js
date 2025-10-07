@@ -6,7 +6,7 @@ import { database } from '@/lib/firebase';
 export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServersReady) {
   const [peers, setPeers] = useState([]);
   const peersRef = useRef([]);
-  const callStateRef = useRef({}); // ✨ [추가] 통화 상태(시작 시간 등)를 추적
+  const callStateRef = useRef({});
 
   useEffect(() => {
     peersRef.current = peers;
@@ -35,7 +35,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
         }
     });
     
-    // ✨ [추가] 통화 기록을 위한 이벤트 리스너 설정 함수
     const setupPeerListeners = (peer, peerID, peerData) => {
       peer.on('connect', () => {
         console.log(`Call connected with ${peerID}. Recording start time.`);
@@ -51,21 +50,25 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
         if (callInfo && callInfo.startTime) {
             const duration = Date.now() - callInfo.startTime;
 
-            // 1초 이상 통화한 경우에만 기록
             if (duration > 1000) {
-                const historyRef = ref(database, 'call_history');
                 const isInitiator = user.uid > peerID;
                 
-                const callRecord = {
-                    callerId: isInitiator ? user.uid : peerID,
-                    callerName: isInitiator ? user.displayName : callInfo.peerData.displayName,
-                    calleeId: isInitiator ? peerID : user.uid,
-                    calleeName: isInitiator ? callInfo.peerData.displayName : user.displayName,
-                    roomId: roomID,
-                    timestamp: callInfo.startTime,
-                    duration: duration // milliseconds
-                };
-                push(historyRef, callRecord);
+                // ✨ [수정] 통화 발신자(initiator)만 통화 기록을 저장하도록 조건 추가
+                if (isInitiator) {
+                  const historyRef = ref(database, 'call_history');
+                  
+                  const callRecord = {
+                      callerId: user.uid,
+                      callerName: user.displayName,
+                      calleeId: peerID,
+                      calleeName: callInfo.peerData.displayName,
+                      roomId: roomID,
+                      timestamp: callInfo.startTime,
+                      duration: duration
+                  };
+                  push(historyRef, callRecord);
+                  console.log('[Room] Call history saved by initiator.');
+                }
             }
             delete callStateRef.current[peerID];
         }

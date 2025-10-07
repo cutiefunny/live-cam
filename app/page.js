@@ -5,14 +5,16 @@ import { useRouter } from 'next/navigation';
 import { nanoid } from 'nanoid';
 import { useAuth } from '@/hooks/useAuth';
 import useAppStore from '@/store/useAppStore';
-import { ref, onValue, off, set, remove, onChildAdded } from 'firebase/database'; // push 제거
+import { ref, onValue, off, set, remove, onChildAdded } from 'firebase/database';
 import { database } from '@/lib/firebase';
 import styles from './Home.module.css';
 
-// 통화 수신 모달 컴포넌트 (변경 없음)
+// 통화 수신 모달 컴포넌트
 const IncomingCallModal = ({ callRequest, onAccept, onDecline }) => {
     if (!callRequest) return null;
+
     const { requesterName, requesterPhotoURL } = callRequest;
+
     return (
         <div className={styles.modalOverlay}>
             <div className={styles.modalContent}>
@@ -32,10 +34,12 @@ const IncomingCallModal = ({ callRequest, onAccept, onDecline }) => {
 export default function Home() {
   const { user, signIn, isLoading, isCreator, goOnline, goOffline } = useAuth();
   const router = useRouter();
-  const { creators, setCreators, callRequest, setCallRequest } = useAppStore();
+  const { creators, setCreators, callRequest, setCallRequest, showToast } = useAppStore();
 
   const [isOnline, setIsOnline] = useState(false);
+  const [userCoins, setUserCoins] = useState(0);
 
+  // 온라인 크리에이터 목록 가져오기 및 현재 내 상태 업데이트
   useEffect(() => {
     const creatorsRef = ref(database, 'creators');
     const listener = onValue(creatorsRef, (snapshot) => {
@@ -50,28 +54,43 @@ export default function Home() {
     });
     return () => off(creatorsRef, 'value', listener);
   }, [setCreators, user]);
+
+  // 현재 사용자의 코인 정보 실시간으로 가져오기
+  useEffect(() => {
+    if (!user) return;
+
+    const userRef = ref(database, `users/${user.uid}/coins`);
+    const listener = onValue(userRef, (snapshot) => {
+      setUserCoins(snapshot.val() || 0);
+    });
+
+    return () => off(userRef, 'value', listener);
+  }, [user]);
   
+  // 크리에이터인 경우 통화 요청 리스닝
   useEffect(() => {
     if (!user || !isCreator) return;
+
     const callRef = ref(database, `calls/${user.uid}`);
     const listener = onChildAdded(callRef, (snapshot) => {
         const callData = snapshot.val();
         setCallRequest({ ...callData, callId: snapshot.key });
     });
+
     return () => off(callRef, 'child_added', listener);
   }, [user, isCreator, setCallRequest]);
 
   const handleCallCreator = async (creator) => {
     if (!user) {
-        alert("Please sign in to make a call.");
+        showToast("로그인 후 이용해주세요.", 'error');
         return;
     }
     if (creator.uid === user.uid) {
-        alert("You cannot call yourself.");
+        showToast("자기 자신에게는 통화를 걸 수 없습니다.", 'info');
         return;
     }
     if (creator.status !== 'online') {
-        alert("This creator is currently busy.");
+        showToast("현재 통화할 수 없는 상태입니다.", 'info');
         return;
     }
 
@@ -84,20 +103,22 @@ export default function Home() {
         requesterPhotoURL: user.photoURL,
         timestamp: Date.now(),
     });
-    
-    // ✨ [수정] 여기서 통화 기록을 저장하던 로직을 제거합니다.
 
     router.push(`/room/${newRoomId}`);
   };
 
   const handleAcceptCall = async () => {
     if (!callRequest || !user) return;
+    
     const creatorStatusRef = ref(database, `creators/${user.uid}/status`);
     await set(creatorStatusRef, 'busy');
+
     const { roomId, requesterId } = callRequest;
     const callRef = ref(database, `calls/${user.uid}/${requesterId}`);
+    
     await remove(callRef);
     setCallRequest(null);
+
     router.push(`/room/${roomId}`);
   };
 
@@ -131,7 +152,10 @@ export default function Home() {
         <div className={styles.lobbyContainer}>
             <div className={styles.userInfo}>
                 <img src={user.photoURL} alt={user.displayName} className={styles.userAvatar} />
-                <span>Welcome, {user.displayName} {isCreator && '(Creator)'}</span>
+                <div>
+                  <span>Welcome, {user.displayName} {isCreator && '(Creator)'}</span>
+                  <div className={styles.coinInfo}>💰 {userCoins} Coins</div>
+                </div>
             </div>
             
             {isCreator && (

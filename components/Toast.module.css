@@ -1,0 +1,45 @@
+/* components/Toast.module.css */
+.toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1rem 1.5rem;
+  border-radius: 0.5rem;
+  color: white;
+  font-size: 0.9rem;
+  z-index: 9999;
+  animation: fadeInOut 3s forwards;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.toast.success {
+  background-color: #16a34a; /* Green */
+}
+
+.toast.error {
+  background-color: #dc2626; /* Red */
+}
+
+.toast.info {
+  background-color: #2563eb; /* Blue */
+}
+
+@keyframes fadeInOut {
+  0% {
+    opacity: 0;
+    top: 0;
+  }
+  10% {
+    opacity: 1;
+    top: 20px;
+  }
+  90% {
+    opacity: 1;
+    top: 20px;
+  }
+  100% {
+    opacity: 0;
+    top: 0;
+  }
+}
