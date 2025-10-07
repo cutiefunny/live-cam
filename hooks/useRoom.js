@@ -45,6 +45,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
       }).then(({ committed }) => {
         if (committed) {
           console.log(`[Coin] Successfully paid out ${amount} coins to creator ${creatorId}.`);
+          
           get(ref(database, `users/${creatorId}`)).then(snapshot => {
             const creatorData = snapshot.val() || {};
             const coinHistoryRef = ref(database, 'coin_history');
@@ -87,7 +88,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
               type: 'use',
               amount: amount,
               timestamp: Date.now(),
-              description: description === '통화 시작' ? description : `Video call with ${peerId}`
+              description: description === '통화 시작' ? `Video call with ${peerId}` : description
             });
             resolve(true);
           } else {
@@ -145,25 +146,23 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
         const callInfo = callStateRef.current[peerID];
         if (callInfo && callInfo.startTime) {
             const duration = Date.now() - callInfo.startTime;
-
-            if (duration > 1000) {
-                const isInitiator = user.uid > peerID;
-                
-                if (isInitiator) {
-                  const historyRef = ref(database, 'call_history');
-                  
-                  const callRecord = {
-                      callerId: user.uid,
-                      callerName: user.displayName,
-                      calleeId: peerID,
-                      calleeName: callInfo.peerData.displayName,
-                      roomId: roomID,
-                      timestamp: callInfo.startTime,
-                      duration: duration
-                  };
-                  push(historyRef, callRecord);
-                  console.log('[Room] Call history saved by initiator.');
-                }
+            const isInitiator = user.uid > peerID;
+            
+            // ✨ [수정] 통화 시간이 0초여도 기록을 남기도록 변경
+            if (isInitiator) {
+              const historyRef = ref(database, 'call_history');
+              
+              const callRecord = {
+                  callerId: user.uid,
+                  callerName: user.displayName,
+                  calleeId: peerID,
+                  calleeName: callInfo.peerData.displayName,
+                  roomId: roomID,
+                  timestamp: callInfo.startTime,
+                  duration: duration
+              };
+              push(historyRef, callRecord);
+              console.log('[Room] Call history saved by initiator.');
             }
             delete callStateRef.current[peerID];
         }
