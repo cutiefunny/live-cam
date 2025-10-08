@@ -1,8 +1,7 @@
 // app/page.js
 'use client';
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import { nanoid } from 'nanoid';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
@@ -13,7 +12,8 @@ import styles from './Home.module.css';
 import Header from '@/components/Header';
 import ProfileModal from '@/components/ProfileModal';
 import CoinModal from '@/components/CoinModal';
-import RatingModal from '@/components/RatingModal'; // ✨ [추가]
+import RatingModal from '@/components/RatingModal'; 
+import CreatorList from '@/components/CreatorList'; // ✨ [추가]
 
 const IncomingCallModal = ({ callRequest, onAccept, onDecline }) => {
     if (!callRequest) return null;
@@ -33,7 +33,6 @@ const IncomingCallModal = ({ callRequest, onAccept, onDecline }) => {
     );
 };
 
-// ✨ [추가] Suspense 내부에서 쿼리 파라미터를 처리할 컴포넌트
 function RatingTrigger() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -46,12 +45,11 @@ function RatingTrigger() {
 
     if (callEnded === 'true' && creatorId && creatorName) {
       openRatingModal({ creatorId, creatorName });
-      // 모달이 뜬 후에는 URL에서 쿼리 파라미터를 제거합니다.
       router.replace('/', { shallow: true });
     }
   }, [searchParams, openRatingModal, router]);
 
-  return null; // 이 컴포넌트는 UI를 렌더링하지 않습니다.
+  return null;
 }
 
 
@@ -80,7 +78,10 @@ export default function Home() {
   } = useAppStore();
 
   const [isOnline, setIsOnline] = useState(false);
+  const [callHistory, setCallHistory] = useState([]);
+  const [allCreators, setAllCreators] = useState([]);
 
+  // 온라인 크리에이터 목록 실시간 감지
   useEffect(() => {
     const creatorsRef = ref(database, 'creators');
     const listener = onValue(creatorsRef, (snapshot) => {
@@ -93,6 +94,30 @@ export default function Home() {
     });
     return () => off(creatorsRef, 'value', listener);
   }, [setCreators, user]);
+
+  // 모든 크리에이터 목록 가져오기
+  useEffect(() => {
+    const usersRef = ref(database, 'users');
+    const listener = onValue(usersRef, (snapshot) => {
+      const usersData = snapshot.val();
+      if (usersData) {
+        const creatorList = Object.values(usersData).filter(u => u.isCreator);
+        setAllCreators(creatorList);
+      }
+    });
+    return () => off(usersRef, 'value', listener);
+  }, []);
+  
+  // 통화 기록 데이터 가져오기
+  useEffect(() => {
+    const historyRef = ref(database, 'call_history');
+    const listener = onValue(historyRef, (snapshot) => {
+      const data = snapshot.val();
+      const historyList = data ? Object.values(data) : [];
+      setCallHistory(historyList);
+    });
+    return () => off(historyRef, 'value', listener);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -113,6 +138,35 @@ export default function Home() {
     return () => off(callRef, 'child_added', listener);
   }, [user, isCreator, setCallRequest]);
 
+  const rankedCreators = useMemo(() => {
+    if (allCreators.length === 0) {
+      return [];
+    }
+  
+    const callDurations = {};
+    callHistory.forEach(call => {
+      const calleeId = call.calleeId;
+      const duration = call.duration || 0;
+      if (!callDurations[calleeId]) {
+        callDurations[calleeId] = 0;
+      }
+      callDurations[calleeId] += duration;
+    });
+  
+    const onlineCreatorIds = new Set(creators.map(c => c.uid));
+  
+    const creatorsWithDetails = allCreators.map(creator => ({
+      ...creator,
+      totalCallTime: callDurations[creator.uid] || 0,
+      isOnline: onlineCreatorIds.has(creator.uid),
+    }));
+  
+    creatorsWithDetails.sort((a, b) => b.totalCallTime - a.totalCallTime);
+  
+    return creatorsWithDetails;
+  }, [allCreators, creators, callHistory]);
+
+
   const handleCallCreator = async (creator) => {
     if (!user) {
       showToast("로그인 후 이용해주세요.", 'error');
@@ -127,7 +181,7 @@ export default function Home() {
       showToast("자기 자신에게는 통화를 걸 수 없습니다.", 'info');
       return;
     }
-    if (creator.status !== 'online') {
+    if (!creator.isOnline) {
       showToast("현재 통화할 수 없는 상태입니다.", 'info');
       return;
     }
@@ -198,25 +252,12 @@ export default function Home() {
               <button onClick={goOnline} className={styles.createButton}>Go Online</button>
             )
           )}
-          <h2 className={styles.creatorListTitle}>Online Creators</h2>
-          <div className={styles.creatorList}>
-            {creators.filter(c => c.status === 'online' && c.uid !== user.uid).length > 0 ? 
-              creators
-                .filter(creator => creator.status === 'online' && creator.uid !== user.uid)
-                .map(creator => (
-                  <div key={creator.uid} className={styles.creatorItem}>
-                    <div className={styles.creatorInfo}>
-                      <img src={creator.photoURL} alt={creator.displayName} className={styles.creatorAvatar} />
-                      <Link href={`/creator/${creator.uid}`} className={styles.creatorNameLink}>
-                        {creator.displayName}
-                      </Link>
-                    </div>
-                    <button onClick={() => handleCallCreator(creator)} className={styles.callButton}>Call</button>
-                  </div>
-                )) 
-              : (<p>No other creators are online right now.</p>)
-            }
-          </div>
+          {/* ✨ [수정] CreatorList 컴포넌트 사용 */}
+          <CreatorList
+            rankedCreators={rankedCreators}
+            user={user}
+            onCallCreator={handleCallCreator}
+          />
         </div>
         <IncomingCallModal callRequest={callRequest} onAccept={handleAcceptCall} onDecline={handleDeclineCall} />
         {isProfileModalOpen && (
@@ -233,7 +274,7 @@ export default function Home() {
             onRequestCharge={requestCoinCharge}
           />
         )}
-        <RatingModal /> {/* ✨ [추가] */}
+        <RatingModal />
       </main>
     </>
   );

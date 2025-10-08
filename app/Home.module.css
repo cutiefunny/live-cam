@@ -123,69 +123,6 @@
   background-color: #b91c1c;
 }
 
-.creatorListTitle {
-  font-size: 1.25rem;
-  font-weight: bold;
-  margin-bottom: 1rem;
-  text-align: left;
-}
-
-.creatorList {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.creatorItem {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background-color: #374151;
-  padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
-}
-
-.creatorInfo {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-/* ✨ [추가] 크리에이터 이름 링크 스타일 */
-.creatorNameLink {
-  color: #e5e7eb;
-  text-decoration: none;
-  font-weight: 500;
-  transition: color 0.2s;
-}
-.creatorNameLink:hover {
-  color: #a5b4fc;
-  text-decoration: underline;
-}
-
-.creatorAvatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 9999px;
-}
-
-.callButton {
-  padding: 0.5rem 1rem;
-  background-color: #16a34a;
-  color: white;
-  border-radius: 0.5rem;
-  font-weight: 600;
-  font-size: 0.875rem;
-}
-.callButton:hover {
-  background-color: #15803d;
-}
-.callButton:disabled {
-  background-color: #4b5563;
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
 .coinInfo {
   font-size: 0.9rem;
   color: #f59e0b; /* Amber 500 */
@@ -331,7 +268,6 @@
   background-color: #b91c1c;
 }
 
-/* ✨ [추가] 내 크리에이터 프로필 버튼 스타일 */
 .myProfileButton {
   width: 100%;
   padding: 0.75rem 1.5rem;
