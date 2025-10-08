@@ -5,10 +5,11 @@ import useAppStore from '@/store/useAppStore';
 import styles from '@/app/Home.module.css';
 
 const coinPackages = [
-  { amount: 50, price: '₩5,000' },
-  { amount: 110, price: '₩10,000' },
-  { amount: 250, price: '₩20,000' },
-  { amount: 700, price: '₩50,000' },
+  { amount: 5, price: '₩5,000' },
+  { amount: 11, price: '₩10,000' },
+  { amount: 25, price: '₩20,000' },
+  { amount: 70, price: '₩50,000' },
+  { amount: 150, price: '₩100,000' },
 ];
 
 export default function CoinModal({ onClose, onRequestCharge }) {

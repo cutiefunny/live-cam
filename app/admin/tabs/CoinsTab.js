@@ -25,6 +25,8 @@ const CoinsTab = ({
             <option value="earn">정산</option>
             <option value="admin_give">관리자 지급</option>
             <option value="admin_take">관리자 회수</option>
+            <option value="gift_use">선물 사용</option>
+            <option value="gift_earn">선물 받음</option>
           </select>
           <input
             type="text"
@@ -55,7 +57,8 @@ const CoinsTab = ({
                     {log.type.replace('_', ' ')}
                   </span>
                 </td>
-                <td className={styles[log.type === 'use' || log.type === 'admin_take' ? 'use' : 'charge']}>
+                {/* ✨ [수정] .includes()를 사용하여 'use'나 'take'가 포함된 모든 타입을 확인합니다. */}
+                <td className={styles[log.type.includes('use') || log.type.includes('take') ? 'use' : 'charge']}>
                   {log.type.includes('give') || log.type.includes('charge') || log.type.includes('earn') ? '+' : '-'}
                   {log.amount}
                 </td>
