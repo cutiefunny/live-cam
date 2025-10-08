@@ -26,9 +26,9 @@
     ],
     "screenshots": [
       {
-        "src":"/images/screenshot.png",
+        "src":"/images/screenshot.jpg",
         "sizes":"606x1280",
-        "type":"image/png",
+        "type":"image/jpeg",
         "description":"홈 화면"
       }
     ]
