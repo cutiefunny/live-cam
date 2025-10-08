@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ref, onChildAdded, onChildRemoved, set, remove, onDisconnect, get, child, off, push, runTransaction } from 'firebase/database';
 import { database } from '@/lib/firebase';
-import useAppStore from '@/store/useAppStore'; // ✨ [추가]
+import useAppStore from '@/store/useAppStore';
 
 export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServersReady, settings, isCreator) {
   const [peers, setPeers] = useState([]);
@@ -10,7 +10,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
   const callStateRef = useRef({});
   const coinDeductionIntervalsRef = useRef({});
   const isCreatorRef = useRef(isCreator);
-  const { setGiftAnimation } = useAppStore(); // ✨ [추가]
+  const { setGiftAnimation } = useAppStore();
 
   useEffect(() => {
     isCreatorRef.current = isCreator;
@@ -34,7 +34,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
     const usersRef = child(roomRef, 'users');
     const currentUserRef = child(usersRef, user.uid);
     const signalsRef = ref(database, `rooms/${roomID}/signals/${user.uid}`);
-    const giftsRef = child(roomRef, 'gifts'); // ✨ [추가]
+    const giftsRef = child(roomRef, 'gifts');
 
     const creatorRef = ref(database, `creators/${user.uid}`);
     if (isCreator) {
@@ -42,11 +42,9 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
         onDisconnect(child(creatorRef, 'status')).set('offline');
     }
     
-    // ✨ [추가] 선물 수신 리스너
     const handleGift = (snapshot) => {
         const giftData = snapshot.val();
         setGiftAnimation(giftData);
-        // 애니메이션 후 DB에서 삭제
         remove(snapshot.ref);
     };
 
@@ -111,7 +109,22 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
       });
     };
     
+    // ✨ [추가] peer의 remoteStream을 상태에 업데이트하는 함수
+    const updatePeerStream = (peerID, stream) => {
+      setPeers(currentPeers =>
+        currentPeers.map(p =>
+          p.peerID === peerID ? { ...p, remoteStream: stream } : p
+        )
+      );
+    };
+
     const setupPeerListeners = (peer, peerID, peerData) => {
+      // ✨ [추가] 스트림 이벤트 리스너를 여기서 바로 등록
+      peer.on('stream', (stream) => {
+        console.log(`[Room] Received stream from ${peerID}`);
+        updatePeerStream(peerID, stream);
+      });
+      
       peer.on('connect', async () => {
         console.log(`Call connected with ${peerID}. Recording start time.`);
         callStateRef.current[peerID] = {
@@ -189,7 +202,8 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
           setupPeerListeners(peer, otherUserId, userData);
           setPeers(currentPeers => {
             if (currentPeers.some(p => p.peerID === otherUserId)) return currentPeers;
-            return [...currentPeers, { peerID: otherUserId, peer, ...userData }];
+            // ✨ [수정] remoteStream 속성을 null로 초기화하여 추가
+            return [...currentPeers, { peerID: otherUserId, peer, remoteStream: null, ...userData }];
           });
         }
       }
@@ -212,7 +226,8 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
             setupPeerListeners(peer, senderId, peerData);
             setPeers(currentPeers => {
               if (currentPeers.some(p => p.peerID === senderId)) return currentPeers;
-              return [...currentPeers, { peerID: senderId, peer, ...peerData }];
+              // ✨ [수정] remoteStream 속성을 null로 초기화하여 추가
+              return [...currentPeers, { peerID: senderId, peer, remoteStream: null, ...peerData }];
             });
           }
         }
@@ -234,13 +249,13 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
     const userJoinedListener = onChildAdded(usersRef, handleUserJoined);
     const userLeftListener = onChildRemoved(usersRef, handleUserLeft);
     const signalListener = onChildAdded(signalsRef, handleSignal);
-    const giftListener = onChildAdded(giftsRef, handleGift); // ✨ [추가]
+    const giftListener = onChildAdded(giftsRef, handleGift);
 
     return () => {
       off(usersRef, 'child_added', userJoinedListener);
       off(usersRef, 'child_removed', userLeftListener);
       off(signalsRef, 'child_added', signalListener);
-      off(giftsRef, 'child_added', giftListener); // ✨ [추가]
+      off(giftsRef, 'child_added', giftListener);
       remove(currentUserRef);
       
       Object.values(coinDeductionIntervalsRef.current).forEach(clearInterval);

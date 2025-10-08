@@ -2,38 +2,25 @@
 import { useEffect, useRef } from 'react';
 import styles from './Video.module.css';
 
-const Video = ({ peer, photoURL, displayName }) => {
+const Video = ({ stream, photoURL, displayName }) => {
   const ref = useRef();
 
   useEffect(() => {
-    if (!peer) return;
+    if (stream && ref.current) {
+      // stream prop이 존재하면 video 요소의 srcObject로 설정합니다.
+      ref.current.srcObject = stream;
+      ref.current.play().catch(error => {
+        console.error('Error attempting to play remote video:', error);
+      });
+    }
 
-    // 'stream' 이벤트 핸들러: 상대방의 MediaStream 객체를 직접 수신합니다.
-    const handleStream = (stream) => {
-      console.log('[Video.js] Received remote stream object.');
-      if (ref.current) {
-        ref.current.srcObject = stream;
-        ref.current.play().catch(error => {
-            console.error('Error attempting to play remote video:', error);
-        });
-      }
-    };
-
-    peer.on('stream', handleStream);
-
-    // 컴포넌트 언마운트 시 정리 함수
+    // 컴포넌트가 언마운트되거나 stream이 null이 될 때 비디오 소스를 정리합니다.
     return () => {
-      peer.off('stream', handleStream);
       if (ref.current && ref.current.srcObject) {
-        const stream = ref.current.srcObject;
-        if (stream) {
-          // 스트림의 모든 트랙을 중지합니다.
-          stream.getTracks().forEach(track => track.stop());
-        }
         ref.current.srcObject = null;
       }
     };
-  }, [peer]);
+  }, [stream]); // stream이 변경될 때마다 이 effect가 실행됩니다.
 
   return (
     <div className={styles.container}>

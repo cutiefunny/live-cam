@@ -47,8 +47,7 @@ export default function Room() {
 
   const mainPeer = peers[0];
   const callQuality = useCallQuality(mainPeer?.peer);
-
-  // ✨ [추가] 통화가 정상적으로 종료되었는지 추적하기 위한 ref
+  
   const callEndedRef = useRef(false);
   
   console.log('[RoomPage] Component rendering.');
@@ -135,9 +134,8 @@ export default function Room() {
     console.log('[RoomPage] ICE server status:', { iceServersReady });
   }, [iceServersReady]);
   
-  // ✨ [수정] 방 나가기 핸들러
   const handleLeaveRoom = () => {
-    callEndedRef.current = true; // 정상 종료로 표시
+    callEndedRef.current = true;
     if (!isCreator && mainPeer) {
       const query = `?callEnded=true&creatorId=${mainPeer.peerID}&creatorName=${mainPeer.displayName}`;
       router.push(`/${query}`);
@@ -197,8 +195,9 @@ export default function Room() {
         {mainPeer ? (
           <div className={styles.remoteVideoContainer}>
             <Video 
-              key={mainPeer.peerID} 
-              peer={mainPeer.peer} 
+              key={mainPeer.peerID}
+              // ✨ [수정] peer 객체 대신 remoteStream을 전달합니다.
+              stream={mainPeer.remoteStream} 
               photoURL={mainPeer.photoURL} 
               displayName={mainPeer.displayName} 
             />
