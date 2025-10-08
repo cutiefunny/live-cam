@@ -9,16 +9,33 @@ import Header from '@/components/Header';
 import CreatorProfileEditModal from '@/components/CreatorProfileEditModal';
 import styles from './CreatorProfile.module.css';
 
+// ✨ [추가] 별점 표시 컴포넌트
+const StarRating = ({ rating }) => {
+  const fullStars = Math.floor(rating);
+  const halfStar = rating % 1 >= 0.5;
+  const emptyStars = 5 - fullStars - (halfStar ? 1 : 0);
+
+  return (
+    <div className={styles.starRating}>
+      {[...Array(fullStars)].map((_, i) => <span key={`full-${i}`}>★</span>)}
+      {halfStar && <span>☆</span>} {/* 간단하게 비어있는 별로 대체 */}
+      {[...Array(emptyStars)].map((_, i) => <span key={`empty-${i}`}>☆</span>)}
+      <span className={styles.ratingValue}>{rating.toFixed(1)}</span>
+    </div>
+  );
+};
+
+
 export default function CreatorProfilePage() {
   const router = useRouter();
   const { creatorId } = useParams();
   const { user, openCoinModal, openProfileModal } = useAppStore();
 
   const [creatorInfo, setCreatorInfo] = useState(null);
-  const [creatorProfile, setCreatorProfile] = useState({ bio: '' });
+  const [creatorProfile, setCreatorProfile] = useState({ bio: '', averageRating: 0, ratingCount: 0 }); // ✨ [수정]
   const [isLoading, setIsLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editingBio, setEditingBio] = useState(''); // ✨ [추가] 모달의 bio 상태를 부모에서 관리
+  const [editingBio, setEditingBio] = useState('');
 
   useEffect(() => {
     if (!creatorId) return;
@@ -47,17 +64,16 @@ export default function CreatorProfilePage() {
     };
   }, [creatorId, router]);
 
-  // ✨ [추가] 모달을 열 때, 현재 프로필 bio를 모달 편집용 state에 설정
   const openEditModal = () => {
     setEditingBio(creatorProfile.bio || '');
     setIsEditModalOpen(true);
   };
   
-  // ✨ [수정] 모달로부터 newBio를 인자로 받지 않고, 부모의 editingBio 상태를 사용
   const handleSaveProfile = async () => {
     if (!creatorId) return;
     try {
       const profileRef = ref(database, `creator_profiles/${creatorId}`);
+      // ✨ [수정] bio 외에 다른 정보가 있다면 유지하도록 ...creatorProfile 추가
       await set(profileRef, {
         ...creatorProfile,
         bio: editingBio,
@@ -89,8 +105,14 @@ export default function CreatorProfilePage() {
           <div className={styles.profileHeader}>
             <img src={creatorInfo.photoURL || '/images/icon.png'} alt={creatorInfo.displayName} className={styles.profileAvatar} />
             <h1 className={styles.displayName}>{creatorInfo.displayName}</h1>
+            {/* ✨ [추가] 별점 및 평가 수 표시 */}
+            {creatorProfile.ratingCount > 0 && (
+              <div className={styles.ratingContainer}>
+                <StarRating rating={creatorProfile.averageRating} />
+                <span className={styles.ratingCount}>({creatorProfile.ratingCount}개의 평가)</span>
+              </div>
+            )}
             {isOwner && (
-              // ✨ [수정] 모달 여는 함수 변경
               <button onClick={openEditModal} className={styles.editButton}>
                 프로필 수정
               </button>
@@ -106,7 +128,6 @@ export default function CreatorProfilePage() {
       </main>
       {isEditModalOpen && (
         <CreatorProfileEditModal
-          // ✨ [수정] 모달에 상태와 상태 변경 함수를 props로 전달
           bio={editingBio}
           onBioChange={setEditingBio}
           onClose={() => setIsEditModalOpen(false)}

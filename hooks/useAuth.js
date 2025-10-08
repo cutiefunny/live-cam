@@ -1,14 +1,14 @@
 // hooks/useAuth.js
 import { useEffect } from 'react';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as firebaseSignOut, updateProfile } from "firebase/auth";
-import { ref, set, onValue, off, onDisconnect, get, remove, update, push, runTransaction } from 'firebase/database';
+import { ref, set, onValue, off, onDisconnect, get, remove, update, push, runTransaction, serverTimestamp } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, database, storage } from '@/lib/firebase';
 import { processImageForUpload } from '@/lib/imageUtils';
 import useAppStore from '@/store/useAppStore';
 
 export function useAuth() {
-  const { user, setUser, setIsCreator, setIsAuthLoading } = useAppStore();
+  const { user, setUser, setIsCreator, setIsAuthLoading, showToast } = useAppStore();
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -124,7 +124,6 @@ export function useAuth() {
     });
   };
 
-  // ✨ [추가] 선물하기 함수
   const sendGift = async (fromUserId, toUserId, gift, roomId) => {
     const { cost } = gift;
     const userCoinRef = ref(database, `users/${fromUserId}/coins`);
@@ -184,5 +183,54 @@ export function useAuth() {
     });
   };
 
-  return { signIn, signOut, goOnline, goOffline, updateUserProfile, requestCoinCharge, sendGift };
+  // ✨ [추가] 별점 제출 함수
+  const submitRating = async (creatorId, rating, comment) => {
+    if (!user) {
+      showToast('로그인이 필요합니다.', 'error');
+      return;
+    }
+    
+    try {
+      // 1. 개별 평가 기록 저장
+      const ratingRef = ref(database, `creator_ratings/${creatorId}`);
+      await push(ratingRef, {
+        rating: rating,
+        comment: comment,
+        callerId: user.uid,
+        callerName: user.displayName,
+        timestamp: serverTimestamp()
+      });
+
+      // 2. 크리에이터 프로필의 평균 별점 및 카운트 업데이트 (트랜잭션)
+      const creatorProfileRef = ref(database, `creator_profiles/${creatorId}`);
+      await runTransaction(creatorProfileRef, (profile) => {
+        if (profile) {
+          const oldRatingCount = profile.ratingCount || 0;
+          const oldAverageRating = profile.averageRating || 0;
+          
+          const newRatingCount = oldRatingCount + 1;
+          const newAverageRating = ((oldAverageRating * oldRatingCount) + rating) / newRatingCount;
+          
+          profile.ratingCount = newRatingCount;
+          profile.averageRating = newAverageRating;
+        } else {
+          // 프로필이 없는 경우 새로 생성
+          profile = {
+            bio: '',
+            ratingCount: 1,
+            averageRating: rating
+          };
+        }
+        return profile;
+      });
+      
+      showToast('소중한 후기 감사합니다!', 'success');
+    } catch (error) {
+      console.error("Failed to submit rating:", error);
+      showToast('후기 제출에 실패했습니다.', 'error');
+    }
+  };
+
+
+  return { signIn, signOut, goOnline, goOffline, updateUserProfile, requestCoinCharge, sendGift, submitRating };
 }

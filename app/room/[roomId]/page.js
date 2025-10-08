@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Video from '@/components/Video';
 import Controls from '@/components/Controls';
 import CallQualityIndicator from '@/components/CallQualityIndicator';
-import GiftModal from '@/components/GiftModal'; // ✨ [추가]
+import GiftModal from '@/components/GiftModal';
 import { useAuth } from '@/hooks/useAuth';
 import { useWebRTC } from '@/hooks/useWebRTC';
 import { useRoom } from '@/hooks/useRoom';
@@ -17,20 +17,20 @@ import styles from './Room.module.css';
 export default function Room() {
   const { roomId } = useParams();
   const router = useRouter();
-  const { sendGift } = useAuth(); // ✨ [추가]
+  const { sendGift } = useAuth();
   
   const user = useAppStore((state) => state.user);
   const isAuthLoading = useAppStore((state) => state.isAuthLoading);
   const isCreator = useAppStore((state) => state.isCreator);
-  const giftAnimation = useAppStore((state) => state.giftAnimation); // ✨ [추가]
-  const setGiftAnimation = useAppStore((state) => state.setGiftAnimation); // ✨ [추가]
+  const giftAnimation = useAppStore((state) => state.giftAnimation);
+  const setGiftAnimation = useAppStore((state) => state.setGiftAnimation);
 
   const { settings, isLoading: isSettingsLoading } = useSettings();
   const userVideo = useRef();
   
   const [localStream, setLocalStream] = useState(null);
   const [mediaStatus, setMediaStatus] = useState('loading'); 
-  const [isGiftModalOpen, setIsGiftModalOpen] = useState(false); // ✨ [추가]
+  const [isGiftModalOpen, setIsGiftModalOpen] = useState(false);
   
   const { createPeer, addPeer, iceServersReady } = useWebRTC(user, roomId);
   
@@ -47,15 +47,17 @@ export default function Room() {
 
   const mainPeer = peers[0];
   const callQuality = useCallQuality(mainPeer?.peer);
+
+  // ✨ [추가] 통화가 정상적으로 종료되었는지 추적하기 위한 ref
+  const callEndedRef = useRef(false);
   
   console.log('[RoomPage] Component rendering.');
 
-  // ✨ [추가] 선물 애니메이션 효과를 처리하는 useEffect
   useEffect(() => {
     if (giftAnimation) {
       const timer = setTimeout(() => {
         setGiftAnimation(null);
-      }, 3000); // 3초 후 애니메이션 상태 초기화
+      }, 3000);
       return () => clearTimeout(timer);
     }
   }, [giftAnimation, setGiftAnimation]);
@@ -114,17 +116,17 @@ export default function Room() {
   useEffect(() => {
     if (!user || (mediaStatus !== 'ready' && mediaStatus !== 'spectator') || !iceServersReady) return;
 
+    if (peers.length > 0) {
+      return;
+    }
+
     const timeoutId = setTimeout(() => {
-      if (peers.length === 0) {
+      if (!callEndedRef.current && peers.length === 0) {
         console.log('[RoomPage] Timeout: No peers connected after 20 seconds.');
-        alert("Call not answered or declined.");
+        alert("상대방이 응답하지 않아 통화를 종료합니다.");
         router.push('/');
       }
     }, 20000);
-
-    if (peers.length > 0) {
-      clearTimeout(timeoutId);
-    }
 
     return () => clearTimeout(timeoutId);
   }, [peers, user, mediaStatus, router, iceServersReady]);
@@ -133,11 +135,17 @@ export default function Room() {
     console.log('[RoomPage] ICE server status:', { iceServersReady });
   }, [iceServersReady]);
   
+  // ✨ [수정] 방 나가기 핸들러
   const handleLeaveRoom = () => {
+    callEndedRef.current = true; // 정상 종료로 표시
+    if (!isCreator && mainPeer) {
+      const query = `?callEnded=true&creatorId=${mainPeer.peerID}&creatorName=${mainPeer.displayName}`;
+      router.push(`/${query}`);
+    } else {
       router.push('/');
+    }
   }
 
-  // ✨ [추가] 선물 보내기 핸들러
   const handleSendGift = async (gift) => {
     if (!user || !mainPeer) return;
     await sendGift(user.uid, mainPeer.peerID, gift, roomId);
@@ -154,7 +162,6 @@ export default function Room() {
   
   return (
     <div className={styles.container}>
-      {/* ✨ [추가] 선물 애니메이션 오버레이 */}
       {giftAnimation && (
         <div className={styles.giftAnimationOverlay}>
           <div className={styles.giftAnimationContent}>
@@ -206,7 +213,6 @@ export default function Room() {
       {mediaStatus === 'ready' && localStream && (
         <footer className={styles.footer}>
           <Controls stream={localStream} onShareScreen={() => {}} />
-          {/* ✨ [추가] 선물하기 버튼 (크리에이터가 아닌 경우에만 표시) */}
           {!isCreator && mainPeer && (
             <button onClick={() => setIsGiftModalOpen(true)} className={styles.giftButton}>
               🎁
@@ -215,7 +221,6 @@ export default function Room() {
         </footer>
       )}
 
-      {/* ✨ [추가] 선물 모달 */}
       {isGiftModalOpen && (
         <GiftModal
           onClose={() => setIsGiftModalOpen(false)}

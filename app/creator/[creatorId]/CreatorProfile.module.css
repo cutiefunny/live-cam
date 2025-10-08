@@ -37,6 +37,31 @@
   font-weight: bold;
 }
 
+/* ✨ [추가] 별점 컨테이너 스타일 */
+.ratingContainer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: -0.5rem; /* 이름과의 간격 조정 */
+}
+
+.starRating {
+  color: #f59e0b; /* Amber */
+  font-size: 1.25rem;
+}
+
+.ratingValue {
+  font-size: 1rem;
+  font-weight: bold;
+  color: #d1d5db;
+  margin-left: 0.25rem;
+}
+
+.ratingCount {
+  font-size: 0.875rem;
+  color: #9ca3af;
+}
+
 .editButton {
   position: absolute;
   top: 0;

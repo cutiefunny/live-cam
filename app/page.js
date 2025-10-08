@@ -1,8 +1,8 @@
 // app/page.js
 'use client';
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link'; // ✨ [추가]
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { nanoid } from 'nanoid';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
@@ -13,6 +13,7 @@ import styles from './Home.module.css';
 import Header from '@/components/Header';
 import ProfileModal from '@/components/ProfileModal';
 import CoinModal from '@/components/CoinModal';
+import RatingModal from '@/components/RatingModal'; // ✨ [추가]
 
 const IncomingCallModal = ({ callRequest, onAccept, onDecline }) => {
     if (!callRequest) return null;
@@ -31,6 +32,28 @@ const IncomingCallModal = ({ callRequest, onAccept, onDecline }) => {
         </div>
     );
 };
+
+// ✨ [추가] Suspense 내부에서 쿼리 파라미터를 처리할 컴포넌트
+function RatingTrigger() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const { openRatingModal } = useAppStore();
+
+  useEffect(() => {
+    const callEnded = searchParams.get('callEnded');
+    const creatorId = searchParams.get('creatorId');
+    const creatorName = searchParams.get('creatorName');
+
+    if (callEnded === 'true' && creatorId && creatorName) {
+      openRatingModal({ creatorId, creatorName });
+      // 모달이 뜬 후에는 URL에서 쿼리 파라미터를 제거합니다.
+      router.replace('/', { shallow: true });
+    }
+  }, [searchParams, openRatingModal, router]);
+
+  return null; // 이 컴포넌트는 UI를 렌더링하지 않습니다.
+}
+
 
 export default function Home() {
   const { signIn, signOut, goOnline, goOffline, updateUserProfile, requestCoinCharge } = useAuth();
@@ -156,6 +179,10 @@ export default function Home() {
 
   return (
     <>
+      <Suspense fallback={<div>Loading...</div>}>
+        <RatingTrigger />
+      </Suspense>
+
       <Header 
         user={user} 
         userCoins={userCoins}
@@ -180,7 +207,6 @@ export default function Home() {
                   <div key={creator.uid} className={styles.creatorItem}>
                     <div className={styles.creatorInfo}>
                       <img src={creator.photoURL} alt={creator.displayName} className={styles.creatorAvatar} />
-                      {/* ✨ [수정] Link 컴포넌트로 감싸기 */}
                       <Link href={`/creator/${creator.uid}`} className={styles.creatorNameLink}>
                         {creator.displayName}
                       </Link>
@@ -207,6 +233,7 @@ export default function Home() {
             onRequestCharge={requestCoinCharge}
           />
         )}
+        <RatingModal /> {/* ✨ [추가] */}
       </main>
     </>
   );

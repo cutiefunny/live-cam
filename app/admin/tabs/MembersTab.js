@@ -1,6 +1,7 @@
 // app/admin/tabs/MembersTab.js
 import React from 'react';
 import styles from '@/components/admin/Admin.module.css';
+import Pagination from '@/components/admin/Pagination';
 
 const MembersTab = ({
   creatorUsers,
@@ -71,7 +72,7 @@ const MembersTab = ({
               </tr>
             </thead>
             <tbody>
-              {pagination.currentGeneralUsers.map((member) => (
+              {pagination.currentUsers.map((member) => (
                 <tr key={member.uid} onClick={() => onUserClick(member)} className={styles.clickableRow}>
                   <td><img src={member.photoURL || '/images/icon.png'} alt={member.displayName} className={styles.avatar} /></td>
                   <td>{member.displayName || 'N/A'}</td>
@@ -82,15 +83,7 @@ const MembersTab = ({
             </tbody>
           </table>
         </div>
-        <div className={styles.pagination}>
-          <button onClick={() => pagination.paginate(pagination.currentPage - 1)} disabled={pagination.currentPage === 1}>
-            &laquo; Prev
-          </button>
-          <span> Page {pagination.currentPage} of {pagination.totalPages} </span>
-          <button onClick={() => pagination.paginate(pagination.currentPage + 1)} disabled={pagination.currentPage === pagination.totalPages || pagination.totalPages === 0}>
-            Next &raquo;
-          </button>
-        </div>
+        <Pagination {...pagination} />
       </div>
     </>
   );

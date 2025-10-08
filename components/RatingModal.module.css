@@ -1,0 +1,92 @@
+/* components/RatingModal.module.css */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modalContent {
+  background-color: #1f2937;
+  padding: 2rem;
+  border-radius: 0.75rem;
+  text-align: center;
+  width: 90%;
+  max-width: 450px;
+}
+
+.modalContent h2 {
+  margin-top: 0;
+  font-size: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.starsContainer {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.star {
+  font-size: 2.5rem;
+  color: #4b5563; /* Gray */
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.star.filled {
+  color: #f59e0b; /* Amber */
+}
+
+.commentTextarea {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: #374151;
+  border: 1px solid #4b5563;
+  border-radius: 0.5rem;
+  color: white;
+  resize: vertical;
+  margin-bottom: 1.5rem;
+  font-family: inherit;
+  font-size: 1rem;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+.cancelButton, .submitButton {
+  padding: 0.6rem 1.2rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  border: none;
+}
+
+.cancelButton {
+  background-color: #4b5563;
+  color: white;
+}
+.cancelButton:hover {
+  background-color: #6b7280;
+}
+
+.submitButton {
+  background-color: #4f46e5;
+  color: white;
+}
+.submitButton:hover:not(:disabled) {
+  background-color: #4338ca;
+}
+.submitButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

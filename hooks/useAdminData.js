@@ -15,6 +15,7 @@ export function useAdminData() {
   const [dashboardData, setDashboardData] = useState({
     newUsers: [],
     weeklyCoinStats: { labels: [], datasets: [] },
+    chargeRequests: [], // ✨ [추가]
   });
 
   // ✨ [수정] 온라인 크리에이터 목록 가져오기 로직 복원
@@ -53,6 +54,19 @@ export function useAdminData() {
         setCoinHistory(historyList);
     });
     return () => off(coinHistoryRef, 'value', listener);
+  }, []);
+
+  // ✨ [추가] 충전 요청 가져오기 로직
+  useEffect(() => {
+    const requestsRef = ref(database, 'charge_requests');
+    const listener = onValue(requestsRef, (snapshot) => {
+      const data = snapshot.val();
+      const pendingRequests = data
+        ? Object.values(data).filter(req => req.status === 'pending')
+        : [];
+      setDashboardData(prev => ({ ...prev, chargeRequests: pendingRequests.sort((a, b) => a.timestamp - b.timestamp) }));
+    });
+    return () => off(requestsRef, 'value', listener);
   }, []);
   
   // 전체 유저 목록에 역할 정보 병합

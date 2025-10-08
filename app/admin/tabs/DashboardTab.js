@@ -12,6 +12,7 @@ import {
   Legend,
 } from 'chart.js';
 import styles from '@/components/admin/Admin.module.css';
+import Pagination from '@/components/admin/Pagination';
 
 // Chart.js 모듈 등록
 ChartJS.register(
@@ -24,21 +25,33 @@ ChartJS.register(
   Legend
 );
 
-// ✨ [추가] '몇 시간 전' 포맷을 위한 헬퍼 함수
 const formatTimeAgo = (isoString) => {
+    if (!isoString) return 'N/A';
     const date = new Date(isoString);
     const now = new Date();
-    const diffInHours = Math.floor((now - date) / (1000 * 60 * 60));
+    const diffInSeconds = Math.floor((now - date) / 1000);
     
-    if (diffInHours < 1) {
-        const diffInMinutes = Math.floor((now - date) / (1000 * 60));
+    if (diffInSeconds < 60) {
+        return `${diffInSeconds}초 전`;
+    }
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) {
         return `${diffInMinutes}분 전`;
     }
+    const diffInHours = Math.floor(diffInMinutes / 60);
     return `${diffInHours}시간 전`;
 };
 
 
-const DashboardTab = ({ onlineCreators, dashboardData }) => {
+const DashboardTab = ({ 
+  onlineCreators, 
+  dashboardData, 
+  onlineCreatorsPagination,
+  newUsersPagination,
+  chargeRequestsPagination,
+  onApprove,
+  onReject,
+}) => {
 
   const chartOptions = {
     responsive: true,
@@ -62,6 +75,48 @@ const DashboardTab = ({ onlineCreators, dashboardData }) => {
 
   return (
     <>
+      {dashboardData.chargeRequests && dashboardData.chargeRequests.length > 0 && (
+        <div className={styles.section}>
+          <h2 className={styles.sectionTitle}>
+            코인 충전 요청 ({dashboardData.chargeRequests.length})
+          </h2>
+          <div className={styles.tableContainer}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Amount</th>
+                  <th>Price</th>
+                  <th>Request Date</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dashboardData.chargeRequests.map((req) => (
+                  <tr key={req.requestId}>
+                    <td>{req.userName} ({req.userEmail})</td>
+                    <td>💰 {req.amount}</td>
+                    <td>{req.price}</td>
+                    <td>{new Date(req.timestamp).toLocaleString()}</td>
+                    <td>
+                      <div className={styles.actionButtons}>
+                        <button onClick={() => onApprove(req)} className={styles.approveButton}>
+                          승인
+                        </button>
+                        <button onClick={() => onReject(req)} className={styles.rejectButton}>
+                          거절
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Pagination {...chargeRequestsPagination} />
+        </div>
+      )}
+
       <div className={styles.section}>
         <h2 className={styles.sectionTitle}>온라인 크리에이터 ({onlineCreators.length})</h2>
         <div className={styles.tableContainer}>
@@ -86,13 +141,13 @@ const DashboardTab = ({ onlineCreators, dashboardData }) => {
                 </tbody>
             </table>
         </div>
+        <Pagination {...onlineCreatorsPagination} />
       </div>
 
       <div className={styles.dashboardGrid}>
         <div className={styles.gridItem}>
             <h3 className={styles.sectionTitle}>신규 가입 회원</h3>
             <div className={styles.tableContainer}>
-                {/* ✨ [수정] 신규 가입 회원 테이블 구조 변경 */}
                 <table className={styles.table}>
                     <tbody>
                         {dashboardData.newUsers.map((user) => (
@@ -105,6 +160,7 @@ const DashboardTab = ({ onlineCreators, dashboardData }) => {
                     </tbody>
                 </table>
             </div>
+            <Pagination {...newUsersPagination} />
         </div>
         <div className={styles.gridItem}>
              <div className={styles.chartContainer}>
