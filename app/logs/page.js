@@ -9,12 +9,16 @@ export default function LogsPage() {
   const [sessions, setSessions] = useState([]);
   const [selectedSession, setSelectedSession] = useState('');
   const [logs, setLogs] = useState([]);
-  const [currentSessionId] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('log_session_id') || 'N/A';
-    }
-    return 'N/A';
-  });
+  
+  // ✨ [수정] 초기 상태는 서버와 클라이언트 모두 동일하게 'N/A'로 설정합니다.
+  const [currentSessionId, setCurrentSessionId] = useState('N/A');
+
+  // ✨ [추가] useEffect를 사용해 클라이언트에서만 sessionStorage에 접근하도록 합니다.
+  useEffect(() => {
+    const sessionId = sessionStorage.getItem('log_session_id') || 'N/A';
+    setCurrentSessionId(sessionId);
+  }, []);
+
 
   // 모든 로그 세션 ID 목록을 가져옵니다.
   useEffect(() => {
