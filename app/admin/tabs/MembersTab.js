@@ -7,6 +7,7 @@ import { formatDuration } from '@/lib/utils';
 const MembersTab = ({
   creatorUsers,
   generalUsers,
+  totalGeneralUsers, // ✨ [추가]
   creatorSearchTerm,
   setCreatorSearchTerm,
   generalSearchTerm,
@@ -59,7 +60,8 @@ const MembersTab = ({
 
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
-          <h2 className={styles.sectionTitle}>일반 회원 목록 ({generalUsers.length})</h2>
+          {/* ✨ [수정] totalGeneralUsers.length 사용 */}
+          <h2 className={styles.sectionTitle}>일반 회원 목록 ({totalGeneralUsers.length})</h2>
           <input
             type="text"
             placeholder="이름 또는 이메일로 검색..."
@@ -80,7 +82,8 @@ const MembersTab = ({
               </tr>
             </thead>
             <tbody>
-              {pagination.currentUsers.length > 0 ? pagination.currentUsers.map((member) => (
+              {/* ✨ [수정] generalUsers (페이지별 목록) 사용 */}
+              {generalUsers.length > 0 ? generalUsers.map((member) => (
                 <tr key={member.uid} onClick={() => onUserClick(member)} className={styles.clickableRow}>
                   <td><img src={member.photoURL || '/images/icon.png'} alt={member.displayName} className={styles.avatar} /></td>
                   <td>{member.displayName || 'N/A'}</td>

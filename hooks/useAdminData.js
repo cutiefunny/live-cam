@@ -1,7 +1,8 @@
 // hooks/useAdminData.js
 import { useState, useEffect } from 'react';
-import { ref, onValue, off, get } from 'firebase/database';
-import { database } from '@/lib/firebase';
+import { ref, onValue, off } from 'firebase/database';
+import { collection, onSnapshot, query, where, orderBy, getDocs } from 'firebase/firestore'; // ✨ [추가]
+import { database, firestore } from '@/lib/firebase'; // ✨ [수정]
 import { useUsers } from '@/hooks/useUsers';
 
 export function useAdminData() {
@@ -11,14 +12,14 @@ export function useAdminData() {
   const [usersWithRoles, setUsersWithRoles] = useState([]);
   const [coinHistory, setCoinHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [chargeRequests, setChargeRequests] = useState([]); // ✨ [분리]
 
   const [dashboardData, setDashboardData] = useState({
     newUsers: [],
     weeklyCoinStats: { labels: [], datasets: [] },
-    chargeRequests: [], // ✨ [추가]
   });
 
-  // ✨ [수정] 온라인 크리에이터 목록 가져오기 로직 복원
+  // 온라인 크리에이터 목록 (RealtimeDB 유지)
   useEffect(() => {
     const creatorsRef = ref(database, 'creators');
     const listener = onValue(creatorsRef, (snapshot) => {
@@ -28,46 +29,33 @@ export function useAdminData() {
     return () => off(creatorsRef, 'value', listener);
   }, []);
 
-  // ✨ [수정] 통화 기록 가져오기 로직 복원
+  // ✨ [수정 시작] Firestore에서 데이터 구독
   useEffect(() => {
-    const historyRef = ref(database, 'call_history');
-    const listener = onValue(historyRef, (snapshot) => {
-      const data = snapshot.val();
-      const historyList = data 
-        ? Object.entries(data).map(([id, value]) => ({ id, ...value }))
-        : [];
-      historyList.sort((a, b) => b.timestamp - a.timestamp);
+    const historyQuery = query(collection(firestore, 'call_history'), orderBy('timestamp', 'desc'));
+    const unsubscribeHistory = onSnapshot(historyQuery, (snapshot) => {
+      const historyList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setCallHistory(historyList);
     });
-    return () => off(historyRef, 'value', listener);
-  }, []);
 
-  // ✨ [수정] 코인 변동 내역 가져오기 로직 복원
-  useEffect(() => {
-    const coinHistoryRef = ref(database, 'coin_history');
-    const listener = onValue(coinHistoryRef, (snapshot) => {
-        const data = snapshot.val();
-        const historyList = data
-            ? Object.entries(data).map(([id, value]) => ({ id, ...value }))
-            : [];
-        historyList.sort((a, b) => b.timestamp - a.timestamp);
-        setCoinHistory(historyList);
+    const coinHistoryQuery = query(collection(firestore, 'coin_history'), orderBy('timestamp', 'desc'));
+    const unsubscribeCoinHistory = onSnapshot(coinHistoryQuery, (snapshot) => {
+      const historyList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setCoinHistory(historyList);
     });
-    return () => off(coinHistoryRef, 'value', listener);
-  }, []);
 
-  // ✨ [추가] 충전 요청 가져오기 로직
-  useEffect(() => {
-    const requestsRef = ref(database, 'charge_requests');
-    const listener = onValue(requestsRef, (snapshot) => {
-      const data = snapshot.val();
-      const pendingRequests = data
-        ? Object.values(data).filter(req => req.status === 'pending')
-        : [];
-      setDashboardData(prev => ({ ...prev, chargeRequests: pendingRequests.sort((a, b) => a.timestamp - b.timestamp) }));
+    const requestsQuery = query(collection(firestore, 'charge_requests'), where('status', '==', 'pending'), orderBy('timestamp', 'asc'));
+    const unsubscribeRequests = onSnapshot(requestsQuery, (snapshot) => {
+      const pendingRequests = snapshot.docs.map(doc => ({ requestId: doc.id, ...doc.data() }));
+      setChargeRequests(pendingRequests);
     });
-    return () => off(requestsRef, 'value', listener);
+
+    return () => {
+      unsubscribeHistory();
+      unsubscribeCoinHistory();
+      unsubscribeRequests();
+    };
   }, []);
+  // ✨ [수정 끝]
   
   // 전체 유저 목록에 역할 정보 병합
   useEffect(() => {
@@ -77,14 +65,16 @@ export function useAdminData() {
       return;
     }
 
-    const usersRef = ref(database, 'users');
-    get(usersRef).then((snapshot) => {
-      const usersFromDB = snapshot.val() || {};
+    // ✨ [수정] Firestore에서 모든 사용자 정보 가져오기
+    getDocs(collection(firestore, 'users')).then((snapshot) => {
+      const usersFromDB = {};
+      snapshot.forEach(doc => {
+        usersFromDB[doc.id] = doc.data();
+      });
+
       const mergedUsers = allAuthUsers.map(authUser => ({
         ...authUser,
-        isCreator: usersFromDB[authUser.uid]?.isCreator || false,
-        lastLogin: usersFromDB[authUser.uid]?.lastLogin || null,
-        coins: usersFromDB[authUser.uid]?.coins || 0,
+        ...usersFromDB[authUser.uid],
       }));
       setUsersWithRoles(mergedUsers);
 
@@ -96,33 +86,30 @@ export function useAdminData() {
     });
   }, [allAuthUsers, isUsersLoading]);
 
-  // 주간 코인 통계 계산
+  // 주간 코인 통계 계산 (기존 로직 대부분 유지)
   useEffect(() => {
     if (coinHistory.length === 0) return;
 
     const today = new Date();
-    const labels = [];
+    const labels = Array(7).fill(0).map((_, i) => {
+        const date = new Date(today);
+        date.setDate(today.getDate() - (6 - i));
+        return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+    });
+
     const chargeData = Array(7).fill(0);
     const usageData = Array(7).fill(0);
 
-    for (let i = 6; i >= 0; i--) {
-        const date = new Date(today);
-        date.setDate(today.getDate() - i);
-        labels.push(date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' }));
-    }
-
     coinHistory.forEach(log => {
-        const logDate = new Date(log.timestamp);
-        // UTC 기준으로 날짜 차이 계산
-        const todayUTC = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
-        const logDateUTC = Date.UTC(logDate.getFullYear(), logDate.getMonth(), logDate.getDate());
-        const diffDays = Math.floor((todayUTC - logDateUTC) / (1000 * 60 * 60 * 24));
+        if (!log.timestamp) return;
+        const logDate = log.timestamp.toDate(); // Firestore 타임스탬프 변환
+        const diffDays = Math.floor((today - logDate) / (1000 * 60 * 60 * 24));
 
         if (diffDays >= 0 && diffDays < 7) {
             const index = 6 - diffDays;
-            if (log.type === 'admin_give' || log.type === 'charge') {
+            if (['admin_give', 'charge', 'gift_earn', 'earn'].includes(log.type)) {
                 chargeData[index] += log.amount;
-            } else if (log.type === 'admin_take' || log.type === 'use') {
+            } else if (['admin_take', 'use', 'gift_use'].includes(log.type)) {
                 usageData[index] += log.amount;
             }
         }
@@ -134,7 +121,7 @@ export function useAdminData() {
             labels,
             datasets: [
                 {
-                    label: '코인 지급/충전',
+                    label: '코인 지급/충전/획득',
                     data: chargeData,
                     borderColor: 'rgb(75, 192, 192)',
                     backgroundColor: 'rgba(75, 192, 192, 0.5)',
@@ -156,6 +143,7 @@ export function useAdminData() {
     usersWithRoles, 
     setUsersWithRoles,
     coinHistory,
+    chargeRequests, // ✨ [추가]
     dashboardData,
     isLoading: isUsersLoading || isLoading 
   };

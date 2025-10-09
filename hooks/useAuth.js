@@ -1,8 +1,9 @@
 // hooks/useAuth.js
 import { useEffect } from 'react';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as firebaseSignOut } from "firebase/auth";
-import { ref, onValue, off, remove } from 'firebase/database';
-import { auth, database } from '@/lib/firebase';
+import { ref, remove, get } from 'firebase/database';
+import { doc, onSnapshot } from 'firebase/firestore'; // ✨ [추가]
+import { auth, database, firestore } from '@/lib/firebase'; // ✨ [수정]
 import useAppStore from '@/store/useAppStore';
 
 export function useAuth() {
@@ -14,24 +15,25 @@ export function useAuth() {
       setIsAuthLoading(false);
 
       if (currentUser) {
-        const userRef = ref(database, `users/${currentUser.uid}`);
-        const followingRef = ref(database, `users/${currentUser.uid}/following`);
-
-        const userListener = onValue(userRef, (snapshot) => {
-          const isUserCreator = snapshot.exists() && snapshot.val().isCreator === true;
-          setIsCreator(isUserCreator);
+        // ✨ [수정 시작] Firestore에서 사용자 데이터 실시간 구독
+        const userDocRef = doc(firestore, 'users', currentUser.uid);
+        
+        const unsubscribeFirestore = onSnapshot(userDocRef, (doc) => {
+          if (doc.exists()) {
+            const userData = doc.data();
+            setIsCreator(userData.isCreator || false);
+            setFollowing(userData.following || []);
+          } else {
+            setIsCreator(false);
+            setFollowing([]);
+          }
         });
 
-        const followingListener = onValue(followingRef, (snapshot) => {
-            const followingData = snapshot.val() || {};
-            setFollowing(Object.keys(followingData));
-        });
-
-        // Return a cleanup function for when the user logs out or component unmounts
+        // Return a cleanup function
         return () => {
-          off(userRef, 'value', userListener);
-          off(followingRef, 'value', followingListener);
+          unsubscribeFirestore();
         };
+        // ✨ [수정 끝]
       } else {
         // User is logged out
         setIsCreator(false);
@@ -54,7 +56,7 @@ export function useAuth() {
   const signOut = async () => {
     const user = auth.currentUser;
     if (user) {
-      // Go offline if the user is a creator
+      // 실시간 상태 관리는 RealtimeDB 유지
       const creatorRef = ref(database, `creators/${user.uid}`);
       const snapshot = await get(creatorRef);
       if (snapshot.exists()) {

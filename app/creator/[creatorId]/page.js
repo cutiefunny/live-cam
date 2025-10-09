@@ -1,9 +1,9 @@
-// app/creator/[creatorId]/page.js
 'use client';
+// app/creator/[creatorId]/page.js
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ref, onValue, off, set } from 'firebase/database';
-import { database } from '@/lib/firebase';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { firestore } from '@/lib/firebase';
 import useAppStore from '@/store/useAppStore';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useCreator } from '@/hooks/useCreator';
@@ -49,33 +49,29 @@ export default function CreatorProfilePage() {
   useEffect(() => {
     if (!creatorId) return;
 
-    const userRef = ref(database, `users/${creatorId}`);
-    const profileRef = ref(database, `creator_profiles/${creatorId}`);
-    const followersRef = ref(database, `users/${creatorId}/followers`);
+    const userRef = doc(firestore, 'users', creatorId);
+    const profileRef = doc(firestore, 'creator_profiles', creatorId);
 
-    const userListener = onValue(userRef, (snapshot) => {
+    const userListener = onSnapshot(userRef, (snapshot) => {
       if (snapshot.exists()) {
-        setCreatorInfo(snapshot.val());
+        const data = snapshot.data();
+        setCreatorInfo(data);
+        setFollowers(data.followers || []);
       } else {
         router.push('/');
       }
       setIsLoading(false);
     });
 
-    const profileListener = onValue(profileRef, (snapshot) => {
+    const profileListener = onSnapshot(profileRef, (snapshot) => {
       if (snapshot.exists()) {
-        setCreatorProfile(snapshot.val());
+        setCreatorProfile(snapshot.data());
       }
     });
     
-    const followersListener = onValue(followersRef, (snapshot) => {
-        setFollowers(snapshot.val() ? Object.keys(snapshot.val()) : []);
-    });
-
     return () => {
-      off(userRef, 'value', userListener);
-      off(profileRef, 'value', profileListener);
-      off(followersRef, 'value', followersListener);
+      userListener();
+      profileListener();
     };
   }, [creatorId, router]);
 
@@ -91,11 +87,11 @@ export default function CreatorProfilePage() {
   const handleSaveProfile = async () => {
     if (!creatorId) return;
     try {
-      const profileRef = ref(database, `creator_profiles/${creatorId}`);
-      await set(profileRef, {
+      const profileRef = doc(firestore, 'creator_profiles', creatorId);
+      await setDoc(profileRef, {
         ...creatorProfile,
         bio: editingBio,
-      });
+      }, { merge: true });
       showToast('프로필이 성공적으로 저장되었습니다.', 'success');
       setIsEditModalOpen(false);
     } catch (error) {
@@ -142,7 +138,6 @@ export default function CreatorProfilePage() {
       />
       <main className={styles.main}>
         <div className={styles.profileContainer}>
-          {/* ✨ [수정] 프로필 헤더 JSX 구조 변경 */}
           <div className={styles.profileHeader}>
             <div className={styles.profileAvatarContainer}>
               <img src={creatorInfo.photoURL || '/images/icon.png'} alt={creatorInfo.displayName} className={styles.profileAvatar} />

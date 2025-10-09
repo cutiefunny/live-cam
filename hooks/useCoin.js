@@ -1,6 +1,7 @@
 // hooks/useCoin.js
-import { ref, push, runTransaction, get, serverTimestamp } from 'firebase/database';
-import { database } from '@/lib/firebase';
+import { collection, addDoc, doc, getDoc, runTransaction as firestoreTransaction, serverTimestamp } from 'firebase/firestore';
+import { ref, push, get, runTransaction } from 'firebase/database';
+import { database, firestore } from '@/lib/firebase';
 import useAppStore from '@/store/useAppStore';
 
 export function useCoin() {
@@ -9,44 +10,46 @@ export function useCoin() {
   const requestCoinCharge = async (amount, price) => {
     if (!user) throw new Error("User not logged in");
 
-    const requestsRef = ref(database, 'charge_requests');
-    const newRequestRef = push(requestsRef);
-    
-    await set(newRequestRef, {
-      requestId: newRequestRef.key,
+    // ✨ [수정] 'charge_requests' 컬렉션에 문서 추가
+    const requestsColRef = collection(firestore, 'charge_requests');
+    await addDoc(requestsColRef, {
       userId: user.uid,
       userName: user.displayName,
       userEmail: user.email,
       amount: amount,
       price: price,
-      timestamp: Date.now(),
+      timestamp: serverTimestamp(),
       status: 'pending',
     });
   };
 
   const sendGift = async (fromUserId, toUserId, gift, roomId) => {
     const { cost } = gift;
-    const userCoinRef = ref(database, `users/${fromUserId}/coins`);
-    const settingsRef = ref(database, 'settings');
+    const fromUserDocRef = doc(firestore, 'users', fromUserId);
+    const toUserDocRef = doc(firestore, 'users', toUserId);
+    const settingsDocRef = doc(firestore, 'settings', 'live');
 
-    const settingsSnapshot = await get(settingsRef);
-    const creatorShareRate = settingsSnapshot.val()?.creatorShareRate || 90;
+    const settingsDoc = await getDoc(settingsDocRef);
+    const creatorShareRate = settingsDoc.data()?.creatorShareRate || 90;
     const payoutAmount = Math.floor(cost * (creatorShareRate / 100));
 
-    const { committed } = await runTransaction(userCoinRef, (currentCoins) => {
+    // ✨ [수정] Firestore 트랜잭션을 사용하여 코인 차감 및 지급
+    await firestoreTransaction(firestore, async (transaction) => {
+      const fromUserDoc = await transaction.get(fromUserDocRef);
+      const currentCoins = fromUserDoc.data()?.coins || 0;
+
       if (currentCoins < cost) {
-        return;
+        throw new Error("Not enough coins");
       }
-      return currentCoins - cost;
+
+      transaction.update(fromUserDocRef, { coins: currentCoins - cost });
+      
+      const toUserDoc = await transaction.get(toUserDocRef);
+      const toUserCoins = toUserDoc.data()?.coins || 0;
+      transaction.update(toUserDocRef, { coins: toUserCoins + payoutAmount });
     });
 
-    if (!committed) {
-      throw new Error("Not enough coins");
-    }
-
-    const creatorCoinRef = ref(database, `users/${toUserId}/coins`);
-    await runTransaction(creatorCoinRef, (currentCoins) => (currentCoins || 0) + payoutAmount);
-
+    // 선물 이벤트는 실시간성이 중요하므로 RealtimeDB 유지
     const roomGiftsRef = ref(database, `rooms/${roomId}/gifts`);
     await push(roomGiftsRef, {
       ...gift,
@@ -55,27 +58,28 @@ export function useCoin() {
       timestamp: Date.now(),
     });
     
-    const coinHistoryRef = ref(database, 'coin_history');
-    const fromUserData = await get(ref(database, `users/${fromUserId}`));
-    const toUserData = await get(ref(database, `users/${toUserId}`));
+    // ✨ [수정] 'coin_history' 컬렉션에 문서 추가 (배치 사용)
+    const fromUserData = (await getDoc(fromUserDocRef)).data();
+    const toUserData = (await getDoc(toUserDocRef)).data();
+    const historyColRef = collection(firestore, 'coin_history');
 
-    await push(coinHistoryRef, {
+    await addDoc(historyColRef, {
       userId: fromUserId,
-      userName: fromUserData.val()?.displayName,
-      userEmail: fromUserData.val()?.email,
+      userName: fromUserData?.displayName,
+      userEmail: fromUserData?.email,
       type: 'gift_use',
       amount: cost,
-      timestamp: Date.now(),
-      description: `${toUserData.val()?.displayName}에게 ${gift.name} 선물`
+      timestamp: serverTimestamp(),
+      description: `${toUserData?.displayName}에게 ${gift.name} 선물`
     });
-    await push(coinHistoryRef, {
+    await addDoc(historyColRef, {
       userId: toUserId,
-      userName: toUserData.val()?.displayName,
-      userEmail: toUserData.val()?.email,
+      userName: toUserData?.displayName,
+      userEmail: toUserData?.email,
       type: 'gift_earn',
       amount: payoutAmount,
-      timestamp: Date.now(),
-      description: `${fromUserData.val()?.displayName}에게 ${gift.name} 선물 받음`
+      timestamp: serverTimestamp(),
+      description: `${fromUserData?.displayName}에게 ${gift.name} 선물 받음`
     });
   };
 
@@ -86,8 +90,10 @@ export function useCoin() {
     }
     
     try {
-      const ratingRef = ref(database, `creator_ratings/${creatorId}`);
-      await push(ratingRef, {
+      // ✨ [수정] 'creator_ratings' 컬렉션에 후기 문서 추가
+      const ratingColRef = collection(firestore, 'creator_ratings');
+      await addDoc(ratingColRef, {
+        creatorId: creatorId,
         rating: rating,
         comment: comment,
         callerId: user.uid,
@@ -95,25 +101,30 @@ export function useCoin() {
         timestamp: serverTimestamp()
       });
 
-      const creatorProfileRef = ref(database, `creator_profiles/${creatorId}`);
-      await runTransaction(creatorProfileRef, (profile) => {
-        if (profile) {
+      // ✨ [수정] Firestore 트랜잭션으로 크리에이터 프로필 업데이트
+      const creatorProfileDocRef = doc(firestore, 'creator_profiles', creatorId);
+      await firestoreTransaction(firestore, async (transaction) => {
+        const profileDoc = await transaction.get(creatorProfileDocRef);
+        
+        if (profileDoc.exists()) {
+          const profile = profileDoc.data();
           const oldRatingCount = profile.ratingCount || 0;
           const oldAverageRating = profile.averageRating || 0;
           
           const newRatingCount = oldRatingCount + 1;
           const newAverageRating = ((oldAverageRating * oldRatingCount) + rating) / newRatingCount;
           
-          profile.ratingCount = newRatingCount;
-          profile.averageRating = newAverageRating;
+          transaction.update(creatorProfileDocRef, {
+            ratingCount: newRatingCount,
+            averageRating: newAverageRating,
+          });
         } else {
-          profile = {
+          transaction.set(creatorProfileDocRef, {
             bio: '',
             ratingCount: 1,
             averageRating: rating
-          };
+          });
         }
-        return profile;
       });
       
       showToast('소중한 후기 감사합니다!', 'success');

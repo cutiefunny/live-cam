@@ -1,7 +1,7 @@
 // hooks/usePagination.js
 import { useState, useEffect } from 'react';
 
-export function usePagination(data, usersPerPage = 10) {
+export function usePagination(data = [], usersPerPage = 10) { // ✨ [수정] data 기본값을 빈 배열로 설정
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {

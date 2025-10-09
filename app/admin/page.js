@@ -1,8 +1,9 @@
 // app/admin/page.js
 'use client';
 import { useState, useEffect } from 'react';
-import { ref, update, runTransaction, push, get, set, onValue, off } from 'firebase/database';
-import { database } from '@/lib/firebase';
+// ✨ setDoc을 import 목록에 추가합니다.
+import { doc, updateDoc, runTransaction, addDoc, collection, getDoc, setDoc } from 'firebase/firestore';
+import { firestore } from '@/lib/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { useAdminData } from '@/hooks/useAdminData';
 import useAppStore from '@/store/useAppStore';
@@ -25,9 +26,11 @@ export default function AdminPage() {
     setUsersWithRoles,
     coinHistory,
     dashboardData,
+    chargeRequests,
     isLoading: isAdminDataLoading,
   } = useAdminData();
 
+  // ... (기존 state 선언들은 동일)
   const [selectedUser, setSelectedUser] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [generalSearchTerm, setGeneralSearchTerm] = useState('');
@@ -41,7 +44,7 @@ export default function AdminPage() {
 
   const showToast = useAppStore((state) => state.showToast);
 
-  const {
+    const {
     filteredCreatorUsers,
     filteredGeneralUsers,
     filteredCallHistory,
@@ -62,15 +65,14 @@ export default function AdminPage() {
   const onlineCreatorsPagination = usePagination(onlineCreators, 5);
   const newUsersPagination = usePagination(dashboardData.newUsers, 5);
   const chargeRequestsPagination = usePagination(
-    dashboardData.chargeRequests,
+    chargeRequests,
     5
   );
 
   useEffect(() => {
-    const settingsRef = ref(database, 'settings');
-    get(settingsRef).then((snapshot) => {
+    getDoc(doc(firestore, 'settings', 'live')).then((snapshot) => {
       if (snapshot.exists()) {
-        setAppSettings(snapshot.val());
+        setAppSettings(snapshot.data());
       } else {
         setAppSettings({
           costPerMinute: 10,
@@ -83,7 +85,8 @@ export default function AdminPage() {
 
   useEffect(() => {
     generalUsersPagination.setCurrentPage(1);
-  }, [generalSearchTerm, creatorSearchTerm, generalUsersPagination.setCurrentPage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generalSearchTerm, creatorSearchTerm]);
 
   const handleSaveSettings = async (newSettings) => {
     if (
@@ -95,16 +98,17 @@ export default function AdminPage() {
       showToast('유효하지 않은 값입니다.', 'error');
       return;
     }
-    const settingsRef = ref(database, 'settings');
-    await set(settingsRef, newSettings);
+    const settingsRef = doc(firestore, 'settings', 'live');
+    await setDoc(settingsRef, newSettings);
     setAppSettings(newSettings);
     showToast('설정이 성공적으로 저장되었습니다.', 'success');
   };
 
   const handleToggleCreator = async (member) => {
-    const userRef = ref(database, `users/${member.uid}`);
+    const userRef = doc(firestore, 'users', member.uid);
     const newIsCreatorStatus = !member.isCreator;
-    await update(userRef, { isCreator: newIsCreatorStatus });
+    
+    await setDoc(userRef, { isCreator: newIsCreatorStatus }, { merge: true });
 
     const updatedUser = { ...member, isCreator: newIsCreatorStatus };
     setUsersWithRoles((prevUsers) =>
@@ -118,78 +122,74 @@ export default function AdminPage() {
   };
 
   const handleUpdateCoins = async (member, amount) => {
-    const userRef = ref(database, `users/${member.uid}`);
+    const userRef = doc(firestore, 'users', member.uid);
     let finalAmount = 0;
-    await runTransaction(userRef, (userData) => {
-      if (userData) {
-        const currentCoins = userData.coins || 0;
+
+    try {
+      await runTransaction(firestore, async (transaction) => {
+        const userDoc = await transaction.get(userRef);
+        if (!userDoc.exists()) {
+          throw new Error("User document not found.");
+        }
+        const currentCoins = userDoc.data().coins || 0;
         if (currentCoins + amount < 0) {
-          finalAmount = currentCoins;
-          return;
+          throw new Error('코인을 0개 미만으로 회수할 수 없습니다.');
         }
-        userData.coins = currentCoins + amount;
-        finalAmount = userData.coins;
-      } else {
-        if (amount < 0) {
-          finalAmount = 0;
-          return { ...member, coins: 0 };
-        }
-        finalAmount = amount;
-        return { ...member, coins: amount };
-      }
-      return userData;
-    });
+        finalAmount = currentCoins + amount;
+        transaction.update(userRef, { coins: finalAmount });
+      });
 
-    if ((member.coins || 0) + amount < 0) {
-      showToast('코인을 0개 미만으로 회수할 수 없습니다.', 'error');
-      return;
+      const coinHistoryRef = collection(firestore, 'coin_history');
+      await addDoc(coinHistoryRef, {
+        userId: member.uid,
+        userName: member.displayName || 'N/A',
+        userEmail: member.email,
+        type: amount > 0 ? 'admin_give' : 'admin_take',
+        amount: Math.abs(amount),
+        timestamp: new Date(),
+        description: `관리자(${user?.email || 'Public Admin'})가 ${
+          amount > 0 ? '지급' : '회수'
+        }`,
+      });
+
+      const updatedUser = { ...member, coins: finalAmount };
+      setUsersWithRoles((prevUsers) =>
+        prevUsers.map((u) => (u.uid === member.uid ? updatedUser : u))
+      );
+      setSelectedUser(updatedUser);
+      showToast(
+        `${member.displayName || '해당 유저'}님의 코인이 ${finalAmount}개로 변경되었습니다.`,
+        'success'
+      );
+
+    } catch (error) {
+       showToast(error.message, 'error');
+       console.error("Failed to update coins:", error);
     }
-
-    const coinHistoryRef = ref(database, 'coin_history');
-    const historyLog = {
-      userId: member.uid,
-      userName: member.displayName || 'N/A',
-      userEmail: member.email,
-      type: amount > 0 ? 'admin_give' : 'admin_take',
-      amount: Math.abs(amount),
-      timestamp: Date.now(),
-      description: `관리자(${user?.email || 'Public Admin'})가 ${
-        amount > 0 ? '지급' : '회수'
-      }`,
-    };
-    await push(coinHistoryRef, historyLog);
-
-    const updatedUser = { ...member, coins: finalAmount };
-    setUsersWithRoles((prevUsers) =>
-      prevUsers.map((u) => (u.uid === member.uid ? updatedUser : u))
-    );
-    setSelectedUser(updatedUser);
-    showToast(
-      `${member.displayName || '해당 유저'}님의 코인이 ${finalAmount}개로 변경되었습니다.`,
-      'success'
-    );
   };
 
   const handleApproveRequest = async (request) => {
     const { requestId, userId, amount, userName, userEmail } = request;
-    const userCoinRef = ref(database, `users/${userId}/coins`);
+    const userCoinRef = doc(firestore, 'users', userId);
+    const requestRef = doc(firestore, 'charge_requests', requestId);
 
     try {
-      await runTransaction(userCoinRef, (currentCoins) => (currentCoins || 0) + amount);
+      await runTransaction(firestore, async (transaction) => {
+        const userDoc = await transaction.get(userCoinRef);
+        const currentCoins = userDoc.exists() ? userDoc.data().coins || 0 : 0;
+        transaction.update(userCoinRef, { coins: currentCoins + amount });
+        transaction.update(requestRef, { status: 'approved' });
+      });
 
-      const coinHistoryRef = ref(database, 'coin_history');
-      await push(coinHistoryRef, {
+      await addDoc(collection(firestore, 'coin_history'), {
         userId: userId,
         userName: userName,
         userEmail: userEmail,
         type: 'charge',
         amount: amount,
-        timestamp: Date.now(),
+        timestamp: new Date(),
         description: '관리자 승인 충전',
       });
-
-      const requestRef = ref(database, `charge_requests/${requestId}`);
-      await update(requestRef, { status: 'approved' });
 
       showToast(`${userName}님의 ${amount}코인 충전을 승인했습니다.`, 'success');
     } catch (error) {
@@ -200,9 +200,9 @@ export default function AdminPage() {
 
   const handleRejectRequest = async (request) => {
     const { requestId, userName, amount } = request;
-    const requestRef = ref(database, `charge_requests/${requestId}`);
+    const requestRef = doc(firestore, 'charge_requests', requestId);
     try {
-      await update(requestRef, { status: 'rejected' });
+      await updateDoc(requestRef, { status: 'rejected' });
       showToast(
         `${userName}님의 ${amount}코인 충전 요청을 거절했습니다.`,
         'info'
@@ -291,7 +291,8 @@ export default function AdminPage() {
         {activeTab === 'members' && (
           <MembersTab
             creatorUsers={filteredCreatorUsers}
-            generalUsers={filteredGeneralUsers}
+            generalUsers={generalUsersPagination.currentUsers}
+            totalGeneralUsers={filteredGeneralUsers} /* ✨ [추가] */
             creatorSearchTerm={creatorSearchTerm}
             setCreatorSearchTerm={setCreatorSearchTerm}
             generalSearchTerm={generalSearchTerm}

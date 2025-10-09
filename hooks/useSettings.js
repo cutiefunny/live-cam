@@ -1,7 +1,7 @@
 // hooks/useSettings.js
 import { useState, useEffect } from 'react';
-import { ref, onValue, off } from 'firebase/database';
-import { database } from '@/lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore'; // ✨ [추가]
+import { firestore } from '@/lib/firebase'; // ✨ [수정]
 
 const defaultSettings = {
   costToStart: 5, 
@@ -14,17 +14,19 @@ export function useSettings() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const settingsRef = ref(database, 'settings');
-    const listener = onValue(settingsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setSettings(snapshot.val());
+    // ✨ [수정 시작] Firestore 'settings' 문서 구독
+    const settingsDocRef = doc(firestore, 'settings', 'live');
+    const unsubscribe = onSnapshot(settingsDocRef, (doc) => {
+      if (doc.exists()) {
+        setSettings(doc.data());
       } else {
         setSettings(defaultSettings);
       }
       setIsLoading(false);
     });
 
-    return () => off(settingsRef, 'value', listener);
+    return () => unsubscribe();
+    // ✨ [수정 끝]
   }, []);
 
   return { settings, isLoading };
