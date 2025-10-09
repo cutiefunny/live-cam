@@ -6,200 +6,250 @@ import Video from '@/components/Video';
 import Controls from '@/components/Controls';
 import CallQualityIndicator from '@/components/CallQualityIndicator';
 import GiftModal from '@/components/GiftModal';
-import { useCoin } from '@/hooks/useCoin'; // useAuth -> useCoin으로 수정
+import { useCoin } from '@/hooks/useCoin';
 import { useWebRTC } from '@/hooks/useWebRTC';
-import { useRoom } from '@/hooks/useRoom';
 import { useSettings } from '@/hooks/useSettings';
 import { useCallQuality } from '@/hooks/useCallQuality';
 import useAppStore from '@/store/useAppStore';
 import styles from './Room.module.css';
+import { ref, onValue, off, remove, set, get, runTransaction, push, onDisconnect } from 'firebase/database';
+import { database } from '@/lib/firebase';
+
 
 export default function Room() {
   const { roomId } = useParams();
   const router = useRouter();
-  const { sendGift } = useCoin(); // useAuth -> useCoin으로 수정
+  const { sendGift } = useCoin();
   
   const user = useAppStore((state) => state.user);
   const isAuthLoading = useAppStore((state) => state.isAuthLoading);
   const isCreator = useAppStore((state) => state.isCreator);
   const giftAnimation = useAppStore((state) => state.giftAnimation);
   const setGiftAnimation = useAppStore((state) => state.setGiftAnimation);
-  const showToast = useAppStore((state) => state.showToast); // ✨ [추가]
+  const showToast = useAppStore((state) => state.showToast);
 
   const { settings, isLoading: isSettingsLoading } = useSettings();
   const userVideo = useRef();
   
-  const [localStream, setLocalStream] = useState(null);
-  const [mediaStatus, setMediaStatus] = useState('loading'); 
+  const { peer, myStream, peers, callPeer, setMyStream } = useWebRTC(user, roomId);
+  
+  const [otherUser, setOtherUser] = useState(null);
   const [isGiftModalOpen, setIsGiftModalOpen] = useState(false);
-  
-  const { createPeer, addPeer, iceServersReady } = useWebRTC(user, roomId);
-  
-  const { peers } = useRoom(
-    roomId,
-    user,
-    localStream,
-    createPeer,
-    addPeer,
-    iceServersReady,
-    settings,
-    isCreator
-  );
-
-  const mainPeer = peers[0];
-  const callQuality = useCallQuality(mainPeer?.peer);
+  const coinDeductionIntervalRef = useRef(null);
   
   const callEndedRef = useRef(false);
-  const backPressState = useRef({ pressedOnce: false, timeoutId: null }); // ✨ [추가]
+  const backPressState = useRef({ pressedOnce: false, timeoutId: null });
+  const callPartnerRef = useRef(null); 
 
-  console.log('[RoomPage] Component rendering.');
+  const remotePeerEntry = otherUser ? peers[otherUser.uid] : null;
+  const callQuality = useCallQuality(remotePeerEntry?.call);
+
+  // 방에 입장한 다른 사용자 정보를 Firebase에서 가져옵니다.
+  useEffect(() => {
+    if (!user || !roomId) return;
+    
+    const currentUserRef = ref(database, `rooms/${roomId}/users/${user.uid}`);
+    set(currentUserRef, {
+      displayName: user.displayName,
+      photoURL: user.photoURL,
+      email: user.email
+    });
+    onDisconnect(currentUserRef).remove();
+
+    const roomUsersRef = ref(database, `rooms/${roomId}/users`);
+    const listener = onValue(roomUsersRef, (snapshot) => {
+        const usersInRoom = snapshot.val();
+        if (usersInRoom) {
+            const otherUserId = Object.keys(usersInRoom).find(uid => uid !== user.uid);
+            if (otherUserId) {
+                const partnerInfo = { uid: otherUserId, ...usersInRoom[otherUserId] };
+                setOtherUser(partnerInfo);
+                callPartnerRef.current = partnerInfo;
+            } else {
+                setOtherUser(null);
+                callPartnerRef.current = null;
+            }
+        }
+    });
+
+    return () => off(roomUsersRef, 'value', listener);
+  }, [user, roomId]);
+
+  // ✨ [수정] 로컬 미디어 스트림을 가져오는 로직 (무한 루프 해결)
+  useEffect(() => {
+    if (isAuthLoading || !user) {
+      if (!isAuthLoading) router.push('/');
+      return;
+    }
+  
+    let streamRef = null; // 스트림을 직접 참조할 변수
+    let isEffectActive = true;
+  
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      .then(stream => {
+        if (isEffectActive) {
+          streamRef = stream; // 변수에 스트림 할당
+          setMyStream(stream);
+          if (userVideo.current) {
+            userVideo.current.srcObject = stream;
+          }
+        }
+      })
+      .catch(err => {
+        if (isEffectActive) {
+          console.error("[RoomPage] getUserMedia error.", err);
+          showToast('카메라/마이크 접근에 실패했습니다. 관전자 모드로 참여합니다.', 'error');
+        }
+      });
+  
+    return () => {
+      isEffectActive = false;
+      // 상태(myStream) 대신 직접 참조하던 스트림 변수를 사용해 트랙을 중지
+      if (streamRef) {
+        console.log('[Cleanup] Stopping media tracks.');
+        streamRef.getTracks().forEach(track => track.stop());
+      }
+    };
+    // ✨ [수정] 의존성 배열에서 myStream과 setMyStream 제거
+  }, [isAuthLoading, user, router]);
+  
+
+  // 상대방이 입장했고, 아직 연결되지 않았다면 (그리고 내가 크리에이터가 아니라면) 통화를 겁니다.
+  useEffect(() => {
+    if (peer && myStream && otherUser && !peers[otherUser.uid] && !isCreator) {
+        console.log(`[RoomPage] Attempting to call ${otherUser.uid}`);
+        callPeer(otherUser.uid);
+    }
+  }, [peer, myStream, otherUser, peers, callPeer, isCreator]);
+
+  // 코인 차감 및 통화 기록 로직
+  useEffect(() => {
+    if (!remotePeerEntry || !settings || isCreator || !user) {
+      return;
+    }
+  
+    const remotePeerId = remotePeerEntry.call.peer;
+    const partnerInfo = callPartnerRef.current;
+    if (!partnerInfo) return;
+
+    console.log(`[Coin] Call with ${remotePeerId} is active. Starting coin logic.`);
+    const startTime = Date.now();
+  
+    const { costToStart, costPerMinute } = settings;
+  
+    (async () => {
+      if (costToStart > 0) {
+        await deductCoin(user.uid, remotePeerId, costToStart, '통화 시작');
+      }
+    })();
+  
+    const intervalId = setInterval(() => {
+      deductCoin(user.uid, remotePeerId, costPerMinute, `Video call minute charge`);
+    }, 60000);
+    coinDeductionIntervalRef.current = intervalId;
+  
+    return () => {
+      console.log(`[Coin] Call with ${remotePeerId} ended. Cleaning up.`);
+      clearInterval(coinDeductionIntervalRef.current);
+      coinDeductionIntervalRef.current = null;
+      
+      const duration = Date.now() - startTime;
+  
+      push(ref(database, 'call_history'), {
+          callerId: user.uid, callerName: user.displayName,
+          calleeId: partnerInfo.uid, calleeName: partnerInfo.displayName,
+          roomId: roomId, timestamp: startTime, duration
+      });
+      console.log(`[History] Call record saved. Duration: ${duration}ms`);
+    };
+  
+  }, [remotePeerEntry, settings, isCreator, user]);
+
+
+  const payoutToCreator = (creatorId, fromUserId, amount) => {
+    const creatorCoinRef = ref(database, `users/${creatorId}/coins`);
+    runTransaction(creatorCoinRef, (currentCoins) => (currentCoins || 0) + amount);
+  };
+  
+  const deductCoin = async (userId, peerId, amount, description) => {
+    return new Promise((resolve) => {
+      const userCoinRef = ref(database, `users/${userId}/coins`);
+      runTransaction(userCoinRef, (currentCoins) => {
+        if (currentCoins === null || currentCoins < amount) {
+          return;
+        }
+        return currentCoins - amount;
+      }).then(({ committed }) => {
+        if (committed) {
+          if (description !== '통화 시작' && settings) {
+            const payoutAmount = Math.floor(amount * (settings.creatorShareRate / 100));
+            payoutToCreator(peerId, userId, payoutAmount);
+          }
+          push(ref(database, 'coin_history'), { userId, userEmail: user.email, userName: user.displayName, type: 'use', amount, timestamp: Date.now(), description: `${description} (${peerId})` });
+          resolve(true);
+        } else {
+          showToast('코인이 부족하여 통화를 종료합니다.', 'error');
+          handleLeaveRoom();
+          resolve(false);
+        }
+      });
+    });
+  };
   
   const handleLeaveRoom = () => {
+    if (callEndedRef.current) return;
     callEndedRef.current = true;
-    if (backPressState.current.timeoutId) {
-      clearTimeout(backPressState.current.timeoutId);
-    }
+
+    if (backPressState.current.timeoutId) clearTimeout(backPressState.current.timeoutId);
     
-    // popstate 리스너를 비활성화하고 실제 뒤로가기 동작을 수행
     window.onpopstate = null; 
     
-    if (!isCreator && mainPeer) {
-      const query = `?callEnded=true&creatorId=${mainPeer.peerID}&creatorName=${mainPeer.displayName}`;
+    const partnerInfo = callPartnerRef.current;
+    if (!isCreator && partnerInfo) {
+      const query = `?callEnded=true&creatorId=${partnerInfo.uid}&creatorName=${partnerInfo.displayName}`;
       router.replace(`/${query}`);
     } else {
       router.replace('/');
     }
   };
-
-  // ✨ [추가 시작] --- 뒤로가기 버튼 처리 로직 ---
+  
   useEffect(() => {
     history.pushState(null, '', location.href);
-
     const handlePopState = () => {
-      // 뒤로가기를 막기 위해 다시 현재 히스토리를 푸시
       history.pushState(null, '', location.href);
-
       if (backPressState.current.pressedOnce) {
-        if (backPressState.current.timeoutId) {
-          clearTimeout(backPressState.current.timeoutId);
-        }
+        if (backPressState.current.timeoutId) clearTimeout(backPressState.current.timeoutId);
         handleLeaveRoom();
       } else {
         backPressState.current.pressedOnce = true;
         showToast('한 번 더 누르면 통화가 종료됩니다.', 'info');
-
         backPressState.current.timeoutId = setTimeout(() => {
           backPressState.current.pressedOnce = false;
-          backPressState.current.timeoutId = null;
-        }, 2000); // 2초 안에 다시 눌러야 종료
+        }, 2000);
       }
     };
-
     window.addEventListener('popstate', handlePopState);
-
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-      if (backPressState.current.timeoutId) {
-        clearTimeout(backPressState.current.timeoutId);
-      }
-    };
-  }, [showToast, handleLeaveRoom]); // 의존성 배열에 추가
-  // ✨ [추가 끝]
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [showToast, handleLeaveRoom]);
 
   useEffect(() => {
     if (giftAnimation) {
-      const timer = setTimeout(() => {
-        setGiftAnimation(null);
-      }, 3000);
+      const timer = setTimeout(() => setGiftAnimation(null), 3000);
       return () => clearTimeout(timer);
     }
   }, [giftAnimation, setGiftAnimation]);
-  
-  useEffect(() => {
-    if (isAuthLoading) return;
-    if (!user) {
-      router.push('/');
-      return;
-    }
 
-    console.log('[RoomPage] Media devices effect running.');
-    
-    let isEffectActive = true;
-
-    async function getMedia() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            if (isEffectActive) {
-                console.log('[RoomPage] getUserMedia success. Stream acquired.');
-                setLocalStream(stream);
-                setMediaStatus('ready');
-            }
-        } catch (err) {
-            if (isEffectActive) {
-                console.error("[RoomPage] getUserMedia error. Joining as spectator.", err);
-                setMediaStatus('spectator');
-            }
-        }
-    }
-
-    getMedia();
-
-    return () => {
-      isEffectActive = false;
-      setLocalStream(currentStream => {
-        if (currentStream) {
-            console.log('[RoomPage] Cleaning up and stopping local stream tracks.');
-            currentStream.getTracks().forEach(track => track.stop());
-        }
-        return null;
-      });
-    };
-  }, [isAuthLoading, user, router]);
-
-  useEffect(() => {
-    if (userVideo.current && localStream && mediaStatus === 'ready') {
-      console.log('[RoomPage] Attaching local stream to video element.');
-      userVideo.current.srcObject = localStream;
-      userVideo.current.play().catch(error => {
-        console.error('Error attempting to play local video:', error);
-      });
-    }
-  }, [localStream, mediaStatus]);
-
-  useEffect(() => {
-    if (!user || (mediaStatus !== 'ready' && mediaStatus !== 'spectator') || !iceServersReady) return;
-
-    if (peers.length > 0) {
-      return;
-    }
-
-    const timeoutId = setTimeout(() => {
-      if (!callEndedRef.current && peers.length === 0) {
-        console.log('[RoomPage] Timeout: No peers connected after 20 seconds.');
-        alert("상대방이 응답하지 않아 통화를 종료합니다.");
-        handleLeaveRoom(); // ✨ [수정] 통일된 종료 함수 사용
-      }
-    }, 20000);
-
-    return () => clearTimeout(timeoutId);
-  }, [peers, user, mediaStatus, router, iceServersReady, handleLeaveRoom]);
-
-  useEffect(() => {
-    console.log('[RoomPage] ICE server status:', { iceServersReady });
-  }, [iceServersReady]);
-  
   const handleSendGift = async (gift) => {
-    if (!user || !mainPeer) return;
-    await sendGift(user.uid, mainPeer.peerID, gift, roomId);
+    if (!user || !otherUser) return;
+    await sendGift(user.uid, otherUser.uid, gift, roomId);
   };
 
-  if (isAuthLoading || isSettingsLoading || !user || mediaStatus === 'loading' || !iceServersReady) {
-      console.log('[RoomPage] Showing loading screen:', { isAuthLoading, isSettingsLoading, user: !!user, mediaStatus, iceServersReady });
-      return (
-        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh'}}>
-            <div style={{fontSize: '1.25rem'}}>Connecting...</div>
-        </div>
-      );
+  if (isAuthLoading || isSettingsLoading || !user) {
+    return (
+      <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh'}}>
+          <div style={{fontSize: '1.25rem'}}>Connecting...</div>
+      </div>
+    );
   }
   
   return (
@@ -215,14 +265,14 @@ export default function Room() {
 
       <header className={styles.header}>
         <h1 className={styles.roomInfo}>Room: <span className={styles.roomId}>{roomId}</span></h1>
-        {mainPeer && <CallQualityIndicator quality={callQuality} />}
+        {remotePeerEntry && <CallQualityIndicator quality={callQuality} />}
         <button onClick={handleLeaveRoom} className={styles.exitButton}>
           Leave Room
         </button>
       </header>
       
       <main className={styles.main}>
-        {mediaStatus === 'ready' ? (
+        {myStream ? (
             <div className={styles.myVideoContainer}>
                 <video muted ref={userVideo} autoPlay playsInline className={styles.video} />
                 <div className={styles.displayName}>
@@ -236,13 +286,13 @@ export default function Room() {
           </div>
         )}
         
-        {mainPeer ? (
+        {remotePeerEntry && otherUser ? (
           <div className={styles.remoteVideoContainer}>
             <Video 
-              key={mainPeer.peerID}
-              stream={mainPeer.remoteStream} 
-              photoURL={mainPeer.photoURL} 
-              displayName={mainPeer.displayName} 
+              key={remotePeerEntry.call.peer}
+              stream={remotePeerEntry.remoteStream} 
+              photoURL={otherUser.photoURL} 
+              displayName={otherUser.displayName} 
             />
           </div>
         ) : (
@@ -252,10 +302,10 @@ export default function Room() {
         )}
       </main>
       
-      {mediaStatus === 'ready' && localStream && (
+      {myStream && (
         <footer className={styles.footer}>
-          <Controls stream={localStream} onShareScreen={() => {}} />
-          {!isCreator && mainPeer && (
+          <Controls stream={myStream} />
+          {!isCreator && otherUser && (
             <button onClick={() => setIsGiftModalOpen(true)} className={styles.giftButton}>
               🎁
             </button>

@@ -2,7 +2,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 
-// ✨ [추가] 품질 상태에 따른 비디오 인코딩 설정
 const QUALITY_SETTINGS = {
   good: {
     maxBitrate: undefined, // 무제한
@@ -18,34 +17,28 @@ const QUALITY_SETTINGS = {
   },
 };
 
-export function useCallQuality(peer) {
-  const [quality, setQuality] = useState('good'); // 'good', 'average', 'poor'
+export function useCallQuality(call) {
+  const [quality, setQuality] = useState('good');
   const intervalRef = useRef(null);
   const lastQualityRef = useRef('good');
-
-  // ✨ [추가] WebRTC 송신자(sender)를 관리하기 위한 ref
   const videoSenderRef = useRef(null);
 
   useEffect(() => {
-    if (!peer || peer.destroyed) {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+    if (!call || !call.peerConnection) {
+      if (intervalRef.current) clearInterval(intervalRef.current);
       return;
     }
 
-    // ✨ [추가] 비디오 송신자를 찾아 ref에 저장하는 함수
+    const pc = call.peerConnection;
+
     const findVideoSender = () => {
-      if (peer._pc) { // _pc는 simple-peer의 내부 RTCPeerConnection 객체입니다.
-        const sender = peer._pc.getSenders().find(s => s.track && s.track.kind === 'video');
-        if (sender) {
-          videoSenderRef.current = sender;
-          console.log('[useCallQuality] Video sender found.');
-        }
+      const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+      if (sender) {
+        videoSenderRef.current = sender;
+        console.log('[useCallQuality] Video sender found.');
       }
     };
     
-    // ✨ [수정] 통화 품질을 평가하고 그에 따라 인코딩 설정을 동적으로 변경하는 함수
     const assessAndApplyQuality = (stats) => {
       let score = 100;
       let packetsLost = 0;
@@ -53,8 +46,8 @@ export function useCallQuality(peer) {
 
       stats.forEach(report => {
         if (report.type === 'remote-inbound-rtp' && report.kind === 'video') {
-          packetsLost = report.packetsLost;
-          roundTripTime = report.roundTripTime;
+          packetsLost = report.packetsLost || 0;
+          roundTripTime = report.roundTripTime || 0;
 
           if (packetsLost > 10) score -= 50;
           else if (packetsLost > 5) score -= 25;
@@ -71,12 +64,11 @@ export function useCallQuality(peer) {
 
       setQuality(newQuality);
 
-      // 품질 상태가 변경되었을 때만 파라미터를 업데이트합니다.
       if (newQuality !== lastQualityRef.current && videoSenderRef.current) {
         const sender = videoSenderRef.current;
         const params = sender.getParameters();
         
-        if (!params.encodings) {
+        if (!params.encodings || params.encodings.length === 0) {
           params.encodings = [{}];
         }
 
@@ -97,13 +89,9 @@ export function useCallQuality(peer) {
     };
 
     const monitorStats = () => {
-      if (peer && !peer.destroyed && peer.connected) {
-        peer.getStats((err, stats) => {
-          if (err) {
-            console.error('Error getting WebRTC stats:', err);
-            return;
-          }
-          assessAndApplyQuality(stats);
+      if (pc && pc.connectionState === 'connected') {
+        pc.getStats(null).then(assessAndApplyQuality).catch(err => {
+          console.error('Error getting WebRTC stats:', err);
         });
       }
     };
@@ -111,6 +99,7 @@ export function useCallQuality(peer) {
     const handleConnect = () => {
       console.log('[useCallQuality] Peer connected. Starting quality monitoring.');
       findVideoSender();
+      if (intervalRef.current) clearInterval(intervalRef.current);
       intervalRef.current = setInterval(monitorStats, 5000);
     }
 
@@ -122,17 +111,29 @@ export function useCallQuality(peer) {
       videoSenderRef.current = null;
     }
 
-    peer.on('connect', handleConnect);
-    peer.on('close', handleClose);
+    const onConnectionStateChange = () => {
+      if (pc.connectionState === 'connected') {
+        handleConnect();
+      } else if (['disconnected', 'closed', 'failed'].includes(pc.connectionState)) {
+        handleClose();
+      }
+    };
+    
+    pc.addEventListener('connectionstatechange', onConnectionStateChange);
+    call.on('close', handleClose);
+
+    if (pc.connectionState === 'connected') {
+      handleConnect();
+    }
 
     return () => {
-      peer.off('connect', handleConnect);
-      peer.off('close', handleClose);
+      pc.removeEventListener('connectionstatechange', onConnectionStateChange);
+      call.off('close', handleClose);
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
     };
-  }, [peer]);
+  }, [call]);
 
   return quality;
 }
