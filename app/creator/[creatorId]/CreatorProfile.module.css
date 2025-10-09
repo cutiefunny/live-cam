@@ -9,41 +9,51 @@
 
 .profileContainer {
   width: 100%;
-  max-width: 700px;
   background-color: #1f2937;
   border-radius: 0.75rem;
   padding: 2rem;
 }
 
+/* ✨ [수정 시작] --- 프로필 헤더 가로 정렬 스타일 --- */
 .profileHeader {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 1rem;
+  gap: 1.5rem; /* 아바타와 정보 사이 간격 */
   padding-bottom: 2rem;
   border-bottom: 1px solid #374151;
-  position: relative;
-  width: 100%; /* 너비 100% */
+  width: 100%;
+}
+
+.profileAvatarContainer {
+  flex-shrink: 0;
 }
 
 .profileAvatar {
-  width: 120px;
-  height: 120px;
+  width: 90px;
+  height: 90px;
   border-radius: 50%;
-  border: 4px solid #4f46e5;
+  border: 3px solid #4f46e5;
+}
+
+.profileInfoContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start; /* 정보들을 왼쪽 정렬 */
+  gap: 0.8rem; /* 정보들 사이의 수직 간격 */
+  width: 100%;
 }
 
 .displayName {
-  font-size: 2rem;
+  font-size: 1.5rem; /* 닉네임 폰트 크기 조정 */
   font-weight: bold;
 }
 
-/* 프로필 통계(별점, 팔로워) 컨테이너 */
 .profileStats {
   display: flex;
   align-items: center;
   gap: 1.5rem;
-  margin-top: -0.5rem;
+  margin-top: 0; /* 기존의 margin 제거 */
 }
 
 .ratingContainer {
@@ -54,57 +64,52 @@
 
 .starRating {
   color: #f59e0b; /* Amber */
-  font-size: 1.25rem;
+  font-size: 1.1rem; /* 별점 아이콘 크기 조정 */
 }
 
 .ratingValue {
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: bold;
   color: #d1d5db;
   margin-left: 0.25rem;
 }
 
 .ratingCount {
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   color: #9ca3af;
 }
 
-/* 팔로워 컨테이너 및 카운트 */
 .followerContainer {
   display: flex;
   align-items: center;
 }
 .followerCount {
-  font-size: 1rem;
+  font-size: 0.9rem;
   color: #d1d5db;
   font-weight: 500;
 }
 
-.editButton {
-  position: absolute;
-  top: 0;
-  right: 0;
+.editButton,
+.followButton,
+.unfollowButton {
+  width: 100%; /* 버튼 너비를 꽉 채움 */
   padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.editButton {
   background-color: #374151;
   color: #d1d5db;
-  border: none;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  transition: background-color 0.2s;
 }
 .editButton:hover {
   background-color: #4b5563;
 }
 
-/* 팔로우/언팔로우 버튼 */
-.followButton, .unfollowButton {
-  position: relative;
-  padding: 0.3rem 0.6rem;
-  border-radius: 0.5rem;
-  font-weight: 600;
-  border: none;
-  cursor: pointer;
-}
 .followButton {
   background-color: #4f46e5;
   color: white;
@@ -120,11 +125,15 @@
   background-color: #6b7280;
 }
 
+/* --- 기존 스타일 유지 --- */
 .profileBody {
   padding-top: 2rem;
   border-bottom: 1px solid #374151; /* 구분선 */
   padding-bottom: 2rem; /* 하단 여백 */
 }
+/* ... 이하 스타일은 이전과 동일하게 유지됩니다 ... */
+
+/* ✨ [수정 끝] */
 
 .sectionTitle {
   font-size: 1.25rem;
@@ -213,7 +222,7 @@
   cursor: not-allowed;
 }
 
-/* --- 사진첩 스타일 --- */
+/* --- 사진첩 스타일 (Coverflow) --- */
 .photoSection {
   padding-top: 2rem;
 }
@@ -227,16 +236,6 @@
   display: flex;
   gap: 0.5rem;
 }
-.saveOrderButton {
-  padding: 0.5rem 1rem;
-  background-color: #16a34a;
-  color: white;
-  border-radius: 0.5rem;
-  font-weight: 600;
-}
-.saveOrderButton:hover {
-  background-color: #15803d;
-}
 .addPhotoButton {
   padding: 0.5rem 1rem;
   background-color: #4f46e5;
@@ -247,52 +246,79 @@
 .addPhotoButton:hover {
   background-color: #4338ca;
 }
-.photoGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 1rem;
-}
-.photoContainer {
+
+.albumContainer {
   position: relative;
-  aspect-ratio: 1 / 1;
-  border: 2px solid transparent;
-  border-radius: 0.375rem;
+  width: 100%;
 }
-.photoContainer[draggable="true"] {
-  cursor: grab;
+.swiperContainer {
+  width: 100%;
+  padding-top: 25px; /* 위쪽 여백 */
+  padding-bottom: 50px; /* 아래쪽 페이지네이션 공간 */
 }
-.photoContainer[draggable="true"]:active {
-  cursor: grabbing;
+.albumSlide {
+  background-position: center;
+  background-size: cover;
+  width: 75%; /* 중앙 슬라이드 너비 */
+  aspect-ratio: 4 / 3;
+  border-radius: 0.5rem;
+  overflow: hidden;
 }
-.dragging .photo {
-  opacity: 0.5;
-  border: 2px dashed #4f46e5;
-}
-.photo {
+.albumImage {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 0.5rem;
+}
+:global(.swiper-slide-active) {
   cursor: pointer;
-  transition: transform 0.2s;
 }
-.photo:hover {
-  transform: scale(1.05);
+
+.paginationContainer {
+  position: absolute;
+  bottom: 10px !important; /* !important로 Swiper의 인라인 스타일을 덮어씁니다. */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  --swiper-pagination-bullet-inactive-color: rgba(255, 255, 255, 0.4);
+  --swiper-pagination-color: white;
 }
+:global(.swiper-pagination-bullet) {
+  width: 8px;
+  height: 8px;
+  transition: all 0.3s ease;
+  opacity: 1; /* 투명도 초기화 */
+}
+:global(.swiper-pagination-bullet-active) {
+  transform: scale(1.5);
+}
+
 .deletePhotoButton {
   position: absolute;
-  top: 0.25rem;
-  right: 0.25rem;
+  top: 0.75rem;
+  right: 0.75rem;
   background-color: rgba(0, 0, 0, 0.6);
   color: white;
   border: none;
   border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  font-size: 1rem;
-  line-height: 24px;
+  width: 28px;
+  height: 28px;
+  font-size: 1.25rem;
+  line-height: 28px;
   text-align: center;
   cursor: pointer;
+  z-index: 10;
+}
+.noPhotosContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 150px;
+  background-color: #111827;
+  border-radius: 0.5rem;
 }
 .noPhotos {
   color: #9ca3af;

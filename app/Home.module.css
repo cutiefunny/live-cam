@@ -12,8 +12,12 @@
 .header {
   position: fixed;
   top: 0;
-  left: 0;
-  right: 0;
+  /* ✨ [수정 시작] 헤더 자체를 중앙 정렬하고 최대 너비를 설정합니다. */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 600px;
+  /* ✨ [수정 끝] */
   height: 64px;
   background-color: #1f2937; /* bg-gray-800 */
   border-bottom: 1px solid #374151; /* border-gray-700 */
@@ -25,7 +29,7 @@
 
 .headerContent {
   width: 100%;
-  max-width: 1200px;
+  /* ✨ [제거] max-width 속성을 제거하여 부모(.header)의 너비를 따르도록 합니다. */
   margin: 0 auto;
   display: flex;
   justify-content: space-between;
@@ -137,7 +141,7 @@
     background-color: #374151;
 }
 
-/* ✨ [추가] 랭킹 섹션 스타일 */
+/* 랭킹 섹션 스타일 */
 .rankingSection {
   margin-top: 2rem;
 }

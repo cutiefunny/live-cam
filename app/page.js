@@ -3,7 +3,11 @@
 import { useState, useEffect, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { nanoid } from 'nanoid';
+// ✨ [수정] 분리된 훅 가져오기
 import { useAuth } from '@/hooks/useAuth';
+import { useUserProfile } from '@/hooks/useUserProfile';
+import { useCreator } from '@/hooks/useCreator';
+import { useCoin } from '@/hooks/useCoin';
 import { useSettings } from '@/hooks/useSettings';
 import useAppStore from '@/store/useAppStore';
 import { ref, onValue, off, set, remove, onChildAdded } from 'firebase/database';
@@ -12,7 +16,7 @@ import styles from './Home.module.css';
 import Header from '@/components/Header';
 import ProfileModal from '@/components/ProfileModal';
 import CoinModal from '@/components/CoinModal';
-import RatingModal from '@/components/RatingModal'; 
+import RatingModal from '@/components/RatingModal';
 import CreatorList from '@/components/CreatorList';
 import FollowingList from '@/components/FollowingList';
 
@@ -54,9 +58,12 @@ function RatingTrigger() {
   return null;
 }
 
-
 export default function Home() {
-  const { signIn, signOut, goOnline, goOffline, updateUserProfile, requestCoinCharge } = useAuth();
+  // ✨ [수정] 역할에 맞는 훅 사용
+  const { signIn, signOut } = useAuth();
+  const { updateUserProfile } = useUserProfile();
+  const { goOnline, goOffline } = useCreator();
+  const { requestCoinCharge } = useCoin();
   const { settings, isLoading: isSettingsLoading } = useSettings();
   const router = useRouter();
 

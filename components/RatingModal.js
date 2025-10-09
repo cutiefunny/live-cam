@@ -2,7 +2,7 @@
 'use client';
 import { useState } from 'react';
 import useAppStore from '@/store/useAppStore';
-import { useAuth } from '@/hooks/useAuth';
+import { useCoin } from '@/hooks/useCoin'; // ✨ [수정]
 import styles from './RatingModal.module.css';
 
 const Star = ({ filled, onClick, onMouseEnter, onMouseLeave }) => (
@@ -18,7 +18,7 @@ const Star = ({ filled, onClick, onMouseEnter, onMouseLeave }) => (
 
 export default function RatingModal() {
   const { isRatingModalOpen, closeRatingModal, ratingModalData } = useAppStore();
-  const { submitRating } = useAuth();
+  const { submitRating } = useCoin(); // ✨ [수정]
   
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);

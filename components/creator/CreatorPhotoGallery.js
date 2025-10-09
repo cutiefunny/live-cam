@@ -1,6 +1,11 @@
 // components/creator/CreatorPhotoGallery.js
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
+import { Swiper, SwiperSlide } from 'swiper/react';
+import { EffectCoverflow, Pagination } from 'swiper/modules'; 
+import 'swiper/css';
+import 'swiper/css/effect-coverflow';
+import 'swiper/css/pagination';
 import styles from '@/app/creator/[creatorId]/CreatorProfile.module.css';
 
 const ImageModal = ({ src, onClose }) => (
@@ -9,44 +14,34 @@ const ImageModal = ({ src, onClose }) => (
   </div>
 );
 
-export default function CreatorPhotoGallery({ photos: initialPhotos, isOwner, onAddPhoto, onDeletePhoto, onOrderSave }) {
-  const [photos, setPhotos] = useState(initialPhotos);
+export default function CreatorPhotoGallery({ photos, isOwner, onAddPhoto, onDeletePhoto }) {
   const [selectedImage, setSelectedImage] = useState(null);
-  const [isDragging, setIsDragging] = useState(false);
-  
-  const dragItem = useRef(null);
-  const dragOverItem = useRef(null);
+  const [swiperInstance, setSwiperInstance] = useState(null);
 
-  useEffect(() => {
-    setPhotos(initialPhotos);
-  }, [initialPhotos]);
-  
-  const handleDragStart = (e, index) => {
-    dragItem.current = index;
-    setIsDragging(true);
-    e.dataTransfer.effectAllowed = 'move';
+  const handleDeleteCurrentImage = () => {
+    if (photos && photos.length > 0 && swiperInstance) {
+      const photoToDelete = photos[swiperInstance.realIndex];
+      onDeletePhoto(photoToDelete.id);
+    }
   };
 
-  const handleDragEnter = (e, index) => {
-    if (dragItem.current === index) return;
-    dragOverItem.current = index;
-    const newPhotos = [...photos];
-    const draggedItemContent = newPhotos.splice(dragItem.current, 1)[0];
-    newPhotos.splice(dragOverItem.current, 0, draggedItemContent);
-    dragItem.current = dragOverItem.current;
-    dragOverItem.current = null;
-    setPhotos(newPhotos);
-  };
-  
-  const handleDragEnd = () => {
-    setIsDragging(false);
-    dragItem.current = null;
-    dragOverItem.current = null;
-  };
-  
-  const handleSaveOrder = () => {
-    onOrderSave(photos);
-  };
+  if (!photos || photos.length === 0) {
+    return (
+      <div className={styles.photoSection}>
+        <div className={styles.photoHeader}>
+          <h2 className={styles.sectionTitle}>사진첩</h2>
+          {isOwner && (
+            <div className={styles.photoActions}>
+              <button onClick={onAddPhoto} className={styles.addPhotoButton}>+ 사진 추가</button>
+            </div>
+          )}
+        </div>
+        <div className={styles.noPhotosContainer}>
+          <p className={styles.noPhotos}>등록된 사진이 없습니다.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.photoSection}>
@@ -54,44 +49,59 @@ export default function CreatorPhotoGallery({ photos: initialPhotos, isOwner, on
         <h2 className={styles.sectionTitle}>사진첩</h2>
         {isOwner && (
           <div className={styles.photoActions}>
-            <button onClick={handleSaveOrder} className={styles.saveOrderButton}>순서 저장</button>
-            {/* ✨ [수정] onClick 핸들러가 이 버튼에만 있는지 확인합니다. */}
             <button onClick={onAddPhoto} className={styles.addPhotoButton}>+ 사진 추가</button>
           </div>
         )}
       </div>
-      <div className={styles.photoGrid}>
-        {photos && photos.length > 0 ? (
-          photos.map((photo, index) => (
-            <div 
-              key={photo.id} 
-              className={`${styles.photoContainer} ${isDragging ? styles.dragging : ''}`}
-              draggable={isOwner}
-              onDragStart={isOwner ? (e) => handleDragStart(e, index) : null}
-              onDragEnter={isOwner ? (e) => handleDragEnter(e, index) : null}
-              onDragEnd={isOwner ? handleDragEnd : null}
-              onDragOver={(e) => e.preventDefault()}
-            >
-              <img
-                src={photo.url}
-                alt="Creator content"
-                className={styles.photo}
-                onClick={() => !isDragging && setSelectedImage(photo.url)}
-              />
-              {isOwner && (
-                <button
-                  onClick={() => onDeletePhoto(photo.id)}
-                  className={styles.deletePhotoButton}
-                >
-                  &times;
-                </button>
+      
+      <div className={styles.albumContainer}>
+        <Swiper
+          effect={'coverflow'}
+          grabCursor={true}
+          centeredSlides={true}
+          slidesPerView={'auto'}
+          coverflowEffect={{
+            rotate: 50,
+            stretch: 0,
+            depth: 100,
+            modifier: 1,
+            slideShadows: false,
+          }}
+          pagination={{
+            el: `.${styles.paginationContainer}`,
+            clickable: true,
+            // ✨ [제거] renderBullet 함수를 제거합니다.
+          }}
+          modules={[EffectCoverflow, Pagination]}
+          onSwiper={setSwiperInstance}
+          className={styles.swiperContainer}
+        >
+          {photos.map((photo, index) => (
+            <SwiperSlide key={photo.id} className={styles.albumSlide}>
+              {({ isActive }) => (
+                <img
+                  src={photo.url}
+                  alt={`Creator content ${index + 1}`}
+                  className={styles.albumImage}
+                  onClick={() => isActive && setSelectedImage(photo.url)}
+                />
               )}
-            </div>
-          ))
-        ) : (
-          <p className={styles.noPhotos}>등록된 사진이 없습니다.</p>
+            </SwiperSlide>
+          ))}
+        </Swiper>
+        
+        <div className={styles.paginationContainer}></div>
+
+        {isOwner && (
+          <button
+            onClick={handleDeleteCurrentImage}
+            className={styles.deletePhotoButton}
+          >
+            &times;
+          </button>
         )}
       </div>
+
       {selectedImage && (
         <ImageModal src={selectedImage} onClose={() => setSelectedImage(null)} />
       )}

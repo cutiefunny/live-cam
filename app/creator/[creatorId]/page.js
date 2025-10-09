@@ -5,7 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { ref, onValue, off, set } from 'firebase/database';
 import { database } from '@/lib/firebase';
 import useAppStore from '@/store/useAppStore';
-import { useAuth } from '@/hooks/useAuth';
+import { useUserProfile } from '@/hooks/useUserProfile';
+import { useCreator } from '@/hooks/useCreator';
 import Header from '@/components/Header';
 import CreatorProfileEditModal from '@/components/CreatorProfileEditModal';
 import CreatorPhotoGallery from '@/components/creator/CreatorPhotoGallery';
@@ -13,7 +14,6 @@ import PhotoUploadModal from '@/components/creator/PhotoUploadModal';
 import styles from './CreatorProfile.module.css';
 
 const StarRating = ({ rating }) => {
-    // ... (StarRating 컴포넌트 코드는 변경 없음)
     const fullStars = Math.floor(rating);
     const halfStar = rating % 1 >= 0.5;
     const emptyStars = 5 - fullStars - (halfStar ? 1 : 0);
@@ -32,11 +32,13 @@ export default function CreatorProfilePage() {
   const router = useRouter();
   const { creatorId } = useParams();
   const { user, openCoinModal, openProfileModal, showToast, following } = useAppStore();
-  const { uploadCreatorPhotos, deleteCreatorPhoto, updateCreatorPhotoOrder, toggleFollowCreator } = useAuth();
+  const { toggleFollowCreator } = useUserProfile();
+  const { uploadCreatorPhotos, deleteCreatorPhoto } = useCreator();
+
 
   const [creatorInfo, setCreatorInfo] = useState(null);
   const [creatorProfile, setCreatorProfile] = useState({ bio: '', averageRating: 0, ratingCount: 0, photos: null });
-  const [followers, setFollowers] = useState([]); // ✨ [추가]
+  const [followers, setFollowers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -49,7 +51,7 @@ export default function CreatorProfilePage() {
 
     const userRef = ref(database, `users/${creatorId}`);
     const profileRef = ref(database, `creator_profiles/${creatorId}`);
-    const followersRef = ref(database, `users/${creatorId}/followers`); // ✨ [추가]
+    const followersRef = ref(database, `users/${creatorId}/followers`);
 
     const userListener = onValue(userRef, (snapshot) => {
       if (snapshot.exists()) {
@@ -66,7 +68,6 @@ export default function CreatorProfilePage() {
       }
     });
     
-    // ✨ [추가] 팔로워 목록 실시간 감지
     const followersListener = onValue(followersRef, (snapshot) => {
         setFollowers(snapshot.val() ? Object.keys(snapshot.val()) : []);
     });
@@ -74,7 +75,7 @@ export default function CreatorProfilePage() {
     return () => {
       off(userRef, 'value', userListener);
       off(profileRef, 'value', profileListener);
-      off(followersRef, 'value', followersListener); // ✨ [추가]
+      off(followersRef, 'value', followersListener);
     };
   }, [creatorId, router]);
 
@@ -82,7 +83,6 @@ export default function CreatorProfilePage() {
     toggleFollowCreator(creatorId);
   };
   
-  // ... (handleSaveProfile, handleDeletePhoto, handleSavePhotoOrder 등은 변경 없음)
   const openEditModal = () => {
     setEditingBio(creatorProfile.bio || '');
     setIsEditModalOpen(true);
@@ -115,17 +115,7 @@ export default function CreatorProfilePage() {
       }
     }
   };
-
-  const handleSavePhotoOrder = async (newOrder) => {
-    try {
-      await updateCreatorPhotoOrder(newOrder);
-      showToast('사진 순서가 저장되었습니다.', 'success');
-    } catch (error) {
-      showToast('순서 저장에 실패했습니다.', 'error');
-      console.error("Failed to save photo order:", error);
-    }
-  };
-
+  
   const photoList = useMemo(() => {
     if (!creatorProfile.photos) return [];
     
@@ -152,32 +142,39 @@ export default function CreatorProfilePage() {
       />
       <main className={styles.main}>
         <div className={styles.profileContainer}>
+          {/* ✨ [수정] 프로필 헤더 JSX 구조 변경 */}
           <div className={styles.profileHeader}>
-            <img src={creatorInfo.photoURL || '/images/icon.png'} alt={creatorInfo.displayName} className={styles.profileAvatar} />
-            <h1 className={styles.displayName}>{creatorInfo.displayName}</h1>
-            
-            <div className={styles.profileStats}>
-                {creatorProfile.ratingCount > 0 && (
-                  <div className={styles.ratingContainer}>
-                    <StarRating rating={creatorProfile.averageRating} />
-                    <span className={styles.ratingCount}>({creatorProfile.ratingCount})</span>
-                  </div>
-                )}
-                <div className={styles.followerContainer}>
-                  <span className={styles.followerCount}>팔로워 {followers.length}</span>
-                </div>
+            <div className={styles.profileAvatarContainer}>
+              <img src={creatorInfo.photoURL || '/images/icon.png'} alt={creatorInfo.displayName} className={styles.profileAvatar} />
             </div>
 
-            {isOwner ? (
-              <button onClick={openEditModal} className={styles.editButton}>
-                소개 수정
-              </button>
-            ) : user && (
-                <button onClick={handleFollowToggle} className={isFollowing ? styles.unfollowButton : styles.followButton}>
-                    {isFollowing ? '언팔로우' : '팔로우'}
+            <div className={styles.profileInfoContainer}>
+              <h1 className={styles.displayName}>{creatorInfo.displayName}</h1>
+              
+              <div className={styles.profileStats}>
+                  {creatorProfile.ratingCount > 0 && (
+                    <div className={styles.ratingContainer}>
+                      <StarRating rating={creatorProfile.averageRating} />
+                      <span className={styles.ratingCount}>({creatorProfile.ratingCount})</span>
+                    </div>
+                  )}
+                  <div className={styles.followerContainer}>
+                    <span className={styles.followerCount}>팔로워 {followers.length}</span>
+                  </div>
+              </div>
+
+              {isOwner ? (
+                <button onClick={openEditModal} className={styles.editButton}>
+                  소개 수정
                 </button>
-            )}
+              ) : user && (
+                  <button onClick={handleFollowToggle} className={isFollowing ? styles.unfollowButton : styles.followButton}>
+                      {isFollowing ? '언팔로우' : '팔로우'}
+                  </button>
+              )}
+            </div>
           </div>
+
           <div className={styles.profileBody}>
             <h2 className={styles.sectionTitle}>소개</h2>
             <p className={styles.bio}>
@@ -189,7 +186,6 @@ export default function CreatorProfilePage() {
             isOwner={isOwner}
             onAddPhoto={() => setIsUploadModalOpen(true)}
             onDeletePhoto={handleDeletePhoto}
-            onOrderSave={handleSavePhotoOrder}
           />
         </div>
       </main>
