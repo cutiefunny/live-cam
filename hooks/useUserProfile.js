@@ -1,9 +1,10 @@
 // hooks/useUserProfile.js
 import { updateProfile } from "firebase/auth";
-import { doc, updateDoc, getDoc, arrayUnion, arrayRemove, writeBatch } from 'firebase/firestore'; // ✨ [추가]
-import { ref, get } from 'firebase/database';
+// ✨ [수정] RealtimeDB 관련 import 제거
+import { doc, updateDoc, getDoc, arrayUnion, arrayRemove, writeBatch } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { auth, database, storage, firestore } from '@/lib/firebase'; // ✨ [수정]
+// ✨ [수정] RealtimeDB(database) import 제거
+import { auth, storage, firestore } from '@/lib/firebase';
 import { processImageForUpload } from '@/lib/imageUtils';
 import useAppStore from '@/store/useAppStore';
 
@@ -28,22 +29,13 @@ export function useUserProfile() {
         photoURL: newPhotoURL,
       });
       
-      // ✨ [수정 시작] Firestore 문서 업데이트
       const userDocRef = doc(firestore, 'users', user.uid);
       await updateDoc(userDocRef, {
         displayName: newDisplayName,
         photoURL: newPhotoURL,
       });
 
-      // RealtimeDB의 온라인 크리에이터 정보도 업데이트 (실시간 상태는 RTDB 유지)
-      const creatorSnapshot = await get(ref(database, `creators/${user.uid}`));
-      if (creatorSnapshot.exists()) {
-        await update(ref(database, `creators/${user.uid}`), {
-          displayName: newDisplayName,
-          photoURL: newPhotoURL,
-        });
-      }
-      // ✨ [수정 끝]
+      // ✨ [제거] RealtimeDB 업데이트 로직 전체 제거
       
       setUser({ ...user, displayName: newDisplayName, photoURL: newPhotoURL });
       
@@ -60,7 +52,6 @@ export function useUserProfile() {
     }
     if (user.uid === creatorId) return;
 
-    // ✨ [수정 시작] Firestore 문서 업데이트 (배치 사용)
     const currentUserDocRef = doc(firestore, 'users', user.uid);
     const creatorDocRef = doc(firestore, 'users', creatorId);
 
@@ -81,7 +72,6 @@ export function useUserProfile() {
         showToast('크리에이터를 팔로우했습니다.', 'success');
     }
     await batch.commit();
-    // ✨ [수정 끝]
   };
 
   return { updateUserProfile, toggleFollowCreator };

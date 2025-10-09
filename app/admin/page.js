@@ -107,10 +107,16 @@ export default function AdminPage() {
   const handleToggleCreator = async (member) => {
     const userRef = doc(firestore, 'users', member.uid);
     const newIsCreatorStatus = !member.isCreator;
-    
-    await setDoc(userRef, { isCreator: newIsCreatorStatus }, { merge: true });
 
-    const updatedUser = { ...member, isCreator: newIsCreatorStatus };
+    // ✨ [수정] 크리에이터로 지정할 때 totalCallTime 필드를 0으로 초기화
+    const dataToUpdate = { isCreator: newIsCreatorStatus };
+    if (newIsCreatorStatus && typeof member.totalCallTime === 'undefined') {
+      dataToUpdate.totalCallTime = 0;
+    }
+    
+    await setDoc(userRef, dataToUpdate, { merge: true });
+
+    const updatedUser = { ...member, ...dataToUpdate };
     setUsersWithRoles((prevUsers) =>
       prevUsers.map((u) => (u.uid === member.uid ? updatedUser : u))
     );
@@ -129,8 +135,12 @@ export default function AdminPage() {
       await runTransaction(firestore, async (transaction) => {
         const userDoc = await transaction.get(userRef);
         if (!userDoc.exists()) {
-          throw new Error("User document not found.");
+          // 문서가 없으면 생성
+          transaction.set(userRef, { coins: Math.max(0, amount) });
+          finalAmount = Math.max(0, amount);
+          return;
         }
+        
         const currentCoins = userDoc.data().coins || 0;
         if (currentCoins + amount < 0) {
           throw new Error('코인을 0개 미만으로 회수할 수 없습니다.');
@@ -177,7 +187,19 @@ export default function AdminPage() {
       await runTransaction(firestore, async (transaction) => {
         const userDoc = await transaction.get(userCoinRef);
         const currentCoins = userDoc.exists() ? userDoc.data().coins || 0 : 0;
-        transaction.update(userCoinRef, { coins: currentCoins + amount });
+        
+        if (userDoc.exists()) {
+          transaction.update(userCoinRef, { coins: currentCoins + amount });
+        } else {
+          // 해당 유저 문서가 없을 경우 새로 생성
+          transaction.set(userCoinRef, { 
+            uid: userId,
+            displayName: userName,
+            email: userEmail,
+            coins: amount 
+          }, { merge: true });
+        }
+        
         transaction.update(requestRef, { status: 'approved' });
       });
 

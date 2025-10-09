@@ -10,7 +10,7 @@ import { useCoin } from '@/hooks/useCoin';
 import { useSettings } from '@/hooks/useSettings';
 import useAppStore from '@/store/useAppStore';
 import { ref, onValue, off, set, remove, onChildAdded } from 'firebase/database';
-import { collection, onSnapshot, query, where, orderBy, getDocs, doc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy, limit, doc } from 'firebase/firestore';
 import { database, firestore } from '@/lib/firebase';
 import styles from './Home.module.css';
 import Header from '@/components/Header';
@@ -20,6 +20,7 @@ import RatingModal from '@/components/RatingModal';
 import CreatorList from '@/components/CreatorList';
 import FollowingList from '@/components/FollowingList';
 
+// ... (IncomingCallModal, RatingTrigger 컴포넌트는 변경 없음) ...
 const IncomingCallModal = ({ callRequest, onAccept, onDecline }) => {
     if (!callRequest) return null;
     const { requesterName, requesterPhotoURL } = callRequest;
@@ -58,6 +59,7 @@ function RatingTrigger() {
   return null;
 }
 
+
 export default function Home() {
   const { signIn, signOut } = useAuth();
   const { updateUserProfile } = useUserProfile();
@@ -73,8 +75,7 @@ export default function Home() {
     isCoinModalOpen, openCoinModal, closeCoinModal, showToast, following,
   } = useAppStore();
 
-  const [callHistory, setCallHistory] = useState([]);
-  const [allCreators, setAllCreators] = useState([]);
+  const [rankedCreators, setRankedCreators] = useState([]);
 
   // 온라인 크리에이터 목록 (실시간) - RealtimeDB
   useEffect(() => {
@@ -87,26 +88,34 @@ export default function Home() {
     return () => off(creatorsRef, 'value', listener);
   }, [setCreators]);
 
-  // 모든 크리에이터 정보 및 통화 기록 - Firestore
+  // ✨ [수정] Firestore 쿼리에서 orderBy를 제거하고 클라이언트에서 정렬합니다.
   useEffect(() => {
-    const creatorsQuery = query(collection(firestore, 'users'), where('isCreator', '==', true));
+    const creatorsQuery = query(
+      collection(firestore, 'users'),
+      where('isCreator', '==', true),
+      limit(50) // 정렬은 제거하고 limit만 유지
+    );
+    
     const unsubscribeCreators = onSnapshot(creatorsQuery, (snapshot) => {
-      // ✨ [수정] doc.id를 uid로 명시적으로 추가합니다.
-      const creatorList = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
-      setAllCreators(creatorList);
+      const onlineCreatorIds = new Set(creators.map(c => c.uid));
+      const creatorList = snapshot.docs.map(doc => ({
+        uid: doc.id,
+        ...doc.data(),
+        isOnline: onlineCreatorIds.has(doc.id)
+      }));
+
+      // 클라이언트 측에서 totalCallTime을 기준으로 정렬 (필드가 없으면 0으로 간주)
+      creatorList.sort((a, b) => (b.totalCallTime || 0) - (a.totalCallTime || 0));
+
+      setRankedCreators(creatorList);
+    }, (error) => {
+      // 에러 핸들링 추가
+      console.error("크리에이터 목록 조회 중 에러 발생:", error);
+      showToast("크리에이터 목록을 불러오는 데 실패했습니다.", "error");
     });
 
-    const historyQuery = query(collection(firestore, 'call_history'), orderBy('timestamp', 'desc'));
-    const unsubscribeHistory = onSnapshot(historyQuery, (snapshot) => {
-      const historyList = snapshot.docs.map(doc => doc.data());
-      setCallHistory(historyList);
-    });
-
-    return () => {
-      unsubscribeCreators();
-      unsubscribeHistory();
-    };
-  }, []);
+    return () => unsubscribeCreators();
+  }, [creators, showToast]); // 의존성 배열에 showToast 추가
 
   // 사용자 코인 정보 실시간 구독 - Firestore
   useEffect(() => {
@@ -129,39 +138,20 @@ export default function Home() {
     return () => off(callRef, 'child_added', listener);
   }, [user, isCreator, setCallRequest]);
   
-  const { rankedCreators, followingCreators } = useMemo(() => {
-    if (allCreators.length === 0) {
-      return { rankedCreators: [], followingCreators: [] };
+  // 팔로우 중인 크리에이터 목록 계산
+  const followingCreators = useMemo(() => {
+    if (rankedCreators.length === 0 || following.length === 0) {
+      return [];
     }
   
-    const callDurations = {};
-    callHistory.forEach(call => {
-      if (call.calleeId && call.duration) {
-        callDurations[call.calleeId] = (callDurations[call.calleeId] || 0) + call.duration;
-      }
-    });
-  
-    const onlineCreatorIds = new Set(creators.map(c => c.uid));
-  
-    const creatorsWithDetails = allCreators.map(creator => ({
-      ...creator,
-      totalCallTime: callDurations[creator.uid] || 0,
-      isOnline: onlineCreatorIds.has(creator.uid),
-    }));
-    
     const followingCreatorIds = new Set(following);
-
-    const followingList = creatorsWithDetails
+    return rankedCreators
       .filter(c => followingCreatorIds.has(c.uid))
       .sort((a, b) => b.isOnline - a.isOnline);
+  }, [rankedCreators, following]);
 
-    const rankingList = creatorsWithDetails
-      .sort((a, b) => b.totalCallTime - a.totalCallTime);
-  
-    return { rankedCreators: rankingList, followingCreators: followingList };
-  }, [allCreators, creators, callHistory, following]);
-
-  const handleCallCreator = async (creator) => {
+  // ... (handleCallCreator, handleAcceptCall, handleDeclineCall 및 렌더링 로직은 변경 없음) ...
+    const handleCallCreator = async (creator) => {
     if (!user) {
       showToast("로그인 후 이용해주세요.", 'error');
       return;
@@ -206,7 +196,8 @@ export default function Home() {
     await remove(ref(database, `calls/${user.uid}/${callRequest.requesterId}`));
     setCallRequest(null);
   };
-
+  
+  // ... 나머지 렌더링 로직 ...
   if (isAuthLoading || isSettingsLoading) {
     return <div className={styles.main}><div>Loading...</div></div>;
   }
