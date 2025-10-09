@@ -1,7 +1,8 @@
 // hooks/useCreator.js
-'use client'; // ✨ [추가] 이 파일을 클라이언트 컴포넌트로 선언합니다.
+'use client';
 import { useState, useEffect } from 'react';
-import { ref, onDisconnect, remove, onValue, get, set } from 'firebase/database';
+// ✨ [수정] 'off' 함수를 import 목록에 추가합니다.
+import { ref, onDisconnect, remove, onValue, get, set, off } from 'firebase/database';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { database, storage, firestore } from '@/lib/firebase';
@@ -13,7 +14,6 @@ export function useCreator() {
   const { user, isCreator: isUserRoleCreator } = useAppStore();
   const [isOnline, setIsOnline] = useState(false);
 
-  // 실시간 온라인 상태 관리는 RealtimeDB 유지 (기존과 동일)
   useEffect(() => {
     if (!user || !isUserRoleCreator || !isOnline) {
       if (user) {
