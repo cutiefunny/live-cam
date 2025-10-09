@@ -137,6 +137,18 @@
     background-color: #374151;
 }
 
+/* ✨ [추가] 랭킹 섹션 스타일 */
+.rankingSection {
+  margin-top: 2rem;
+}
+
+.rankingTitle {
+  font-size: 1.25rem;
+  font-weight: bold;
+  margin-bottom: 1rem;
+  text-align: left;
+}
+
 /* --- 모달 공통 스타일 --- */
 .modalOverlay {
     position: fixed;

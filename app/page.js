@@ -13,8 +13,10 @@ import Header from '@/components/Header';
 import ProfileModal from '@/components/ProfileModal';
 import CoinModal from '@/components/CoinModal';
 import RatingModal from '@/components/RatingModal'; 
-import CreatorList from '@/components/CreatorList'; // ✨ [추가]
+import CreatorList from '@/components/CreatorList';
+import FollowingList from '@/components/FollowingList';
 
+// ... (IncomingCallModal, RatingTrigger 함수는 변경 없음) ...
 const IncomingCallModal = ({ callRequest, onAccept, onDecline }) => {
     if (!callRequest) return null;
     const { requesterName, requesterPhotoURL } = callRequest;
@@ -74,14 +76,15 @@ export default function Home() {
     isCoinModalOpen,
     openCoinModal,
     closeCoinModal,
-    showToast
+    showToast,
+    following,
   } = useAppStore();
 
   const [isOnline, setIsOnline] = useState(false);
   const [callHistory, setCallHistory] = useState([]);
   const [allCreators, setAllCreators] = useState([]);
 
-  // 온라인 크리에이터 목록 실시간 감지
+  // ... (useEffect 훅들은 변경 없음) ...
   useEffect(() => {
     const creatorsRef = ref(database, 'creators');
     const listener = onValue(creatorsRef, (snapshot) => {
@@ -95,7 +98,6 @@ export default function Home() {
     return () => off(creatorsRef, 'value', listener);
   }, [setCreators, user]);
 
-  // 모든 크리에이터 목록 가져오기
   useEffect(() => {
     const usersRef = ref(database, 'users');
     const listener = onValue(usersRef, (snapshot) => {
@@ -108,7 +110,6 @@ export default function Home() {
     return () => off(usersRef, 'value', listener);
   }, []);
   
-  // 통화 기록 데이터 가져오기
   useEffect(() => {
     const historyRef = ref(database, 'call_history');
     const listener = onValue(historyRef, (snapshot) => {
@@ -137,10 +138,10 @@ export default function Home() {
     });
     return () => off(callRef, 'child_added', listener);
   }, [user, isCreator, setCallRequest]);
-
-  const rankedCreators = useMemo(() => {
+  
+  const { rankedCreators, followingCreators } = useMemo(() => {
     if (allCreators.length === 0) {
-      return [];
+      return { rankedCreators: [], followingCreators: [] };
     }
   
     const callDurations = {};
@@ -160,13 +161,18 @@ export default function Home() {
       totalCallTime: callDurations[creator.uid] || 0,
       isOnline: onlineCreatorIds.has(creator.uid),
     }));
-  
-    creatorsWithDetails.sort((a, b) => b.totalCallTime - a.totalCallTime);
-  
-    return creatorsWithDetails;
-  }, [allCreators, creators, callHistory]);
+    
+    const followingList = creatorsWithDetails
+      .filter(c => following.includes(c.uid))
+      .sort((a, b) => b.isOnline - a.isOnline);
 
+    const rankingList = creatorsWithDetails
+      .sort((a, b) => b.totalCallTime - a.totalCallTime);
+  
+    return { rankedCreators: rankingList, followingCreators: followingList };
+  }, [allCreators, creators, callHistory, following]);
 
+  // ... (handleCallCreator, handleAcceptCall, handleDeclineCall 함수들은 변경 없음) ...
   const handleCallCreator = async (creator) => {
     if (!user) {
       showToast("로그인 후 이용해주세요.", 'error');
@@ -221,11 +227,11 @@ export default function Home() {
     return (
       <main className={styles.main}>
         <div className={styles.loginContainer}>
-          <h1 className={styles.loginTitle}>취향캠톡</h1>
-          <p className={styles.loginDescription}>관심사 기반 영상 채팅을 시작해보세요.</p>
-          <button onClick={signIn} className={styles.loginButton}>
-            Google 계정으로 시작하기
-          </button>
+            <h1 className={styles.loginTitle}>취향캠톡</h1>
+            <p className={styles.loginDescription}>관심사 기반 영상 채팅을 시작해보세요.</p>
+            <button onClick={signIn} className={styles.loginButton}>
+                Google 계정으로 시작하기
+            </button>
         </div>
       </main>
     );
@@ -244,21 +250,30 @@ export default function Home() {
         onCoinClick={openCoinModal}
       />
       <main className={styles.main}>
-        <div className={styles.lobbyContainer}>
-          {isCreator && (
-            isOnline ? (
-              <button onClick={goOffline} className={styles.goOfflineButton}>Go Offline</button>
-            ) : (
-              <button onClick={goOnline} className={styles.createButton}>Go Online</button>
-            )
-          )}
-          {/* ✨ [수정] CreatorList 컴포넌트 사용 */}
-          <CreatorList
-            rankedCreators={rankedCreators}
+        {isCreator && (
+            <div className={styles.creatorActions}>
+                {isOnline ? (
+                <button onClick={goOffline} className={styles.goOfflineButton}>Go Offline</button>
+                ) : (
+                <button onClick={goOnline} className={styles.createButton}>Go Online</button>
+                )}
+            </div>
+        )}
+        
+        {followingCreators.length > 0 && (
+          <FollowingList 
+            followingCreators={followingCreators}
             user={user}
             onCallCreator={handleCallCreator}
           />
-        </div>
+        )}
+        
+        <CreatorList
+          rankedCreators={rankedCreators}
+          user={user}
+          onCallCreator={handleCallCreator}
+        />
+
         <IncomingCallModal callRequest={callRequest} onAccept={handleAcceptCall} onDecline={handleDeclineCall} />
         {isProfileModalOpen && (
           <ProfileModal 

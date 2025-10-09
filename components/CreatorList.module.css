@@ -1,6 +1,12 @@
 /* components/CreatorList.module.css */
 
-.creatorListTitle {
+/* ✨ [추가] 전체 섹션을 감싸는 컨테이너 */
+.container {
+  width: 100%;
+}
+
+/* ✨ [수정] 제목 스타일 이름 변경 및 적용 */
+.title {
   font-size: 1.25rem;
   font-weight: bold;
   margin-bottom: 1rem;
@@ -27,9 +33,9 @@
   text-decoration: none;
   font-weight: 500;
   transition: color 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 .creatorNameLink:hover {
   color: #a5b4fc;
@@ -98,4 +104,11 @@
   background-color: #4b5563;
   cursor: not-allowed;
   opacity: 0.7;
+}
+
+/* ✨ [추가] 목록이 비었을 때 텍스트 스타일 */
+.emptyListText {
+  color: #9ca3af;
+  text-align: center;
+  padding: 1rem 0;
 }

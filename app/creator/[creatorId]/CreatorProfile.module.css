@@ -23,6 +23,7 @@
   padding-bottom: 2rem;
   border-bottom: 1px solid #374151;
   position: relative;
+  width: 100%; /* 너비 100% */
 }
 
 .profileAvatar {
@@ -37,12 +38,18 @@
   font-weight: bold;
 }
 
-/* ✨ [추가] 별점 컨테이너 스타일 */
+/* 프로필 통계(별점, 팔로워) 컨테이너 */
+.profileStats {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-top: -0.5rem;
+}
+
 .ratingContainer {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-top: -0.5rem; /* 이름과의 간격 조정 */
 }
 
 .starRating {
@@ -62,6 +69,17 @@
   color: #9ca3af;
 }
 
+/* 팔로워 컨테이너 및 카운트 */
+.followerContainer {
+  display: flex;
+  align-items: center;
+}
+.followerCount {
+  font-size: 1rem;
+  color: #d1d5db;
+  font-weight: 500;
+}
+
 .editButton {
   position: absolute;
   top: 0;
@@ -78,8 +96,34 @@
   background-color: #4b5563;
 }
 
+/* 팔로우/언팔로우 버튼 */
+.followButton, .unfollowButton {
+  position: relative;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+}
+.followButton {
+  background-color: #4f46e5;
+  color: white;
+}
+.followButton:hover {
+  background-color: #4338ca;
+}
+.unfollowButton {
+  background-color: #4b5563;
+  color: white;
+}
+.unfollowButton:hover {
+  background-color: #6b7280;
+}
+
 .profileBody {
   padding-top: 2rem;
+  border-bottom: 1px solid #374151; /* 구분선 */
+  padding-bottom: 2rem; /* 하단 여백 */
 }
 
 .sectionTitle {
@@ -139,6 +183,7 @@
   display: flex;
   justify-content: flex-end;
   gap: 1rem;
+  margin-top: 1.5rem; /* 상단 여백 */
 }
 
 .cancelButton, .saveButton {
@@ -166,4 +211,164 @@
 .saveButton:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* --- 사진첩 스타일 --- */
+.photoSection {
+  padding-top: 2rem;
+}
+.photoHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.photoActions {
+  display: flex;
+  gap: 0.5rem;
+}
+.saveOrderButton {
+  padding: 0.5rem 1rem;
+  background-color: #16a34a;
+  color: white;
+  border-radius: 0.5rem;
+  font-weight: 600;
+}
+.saveOrderButton:hover {
+  background-color: #15803d;
+}
+.addPhotoButton {
+  padding: 0.5rem 1rem;
+  background-color: #4f46e5;
+  color: white;
+  border-radius: 0.5rem;
+  font-weight: 600;
+}
+.addPhotoButton:hover {
+  background-color: #4338ca;
+}
+.photoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 1rem;
+}
+.photoContainer {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border: 2px solid transparent;
+  border-radius: 0.375rem;
+}
+.photoContainer[draggable="true"] {
+  cursor: grab;
+}
+.photoContainer[draggable="true"]:active {
+  cursor: grabbing;
+}
+.dragging .photo {
+  opacity: 0.5;
+  border: 2px dashed #4f46e5;
+}
+.photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+.photo:hover {
+  transform: scale(1.05);
+}
+.deletePhotoButton {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  font-size: 1rem;
+  line-height: 24px;
+  text-align: center;
+  cursor: pointer;
+}
+.noPhotos {
+  color: #9ca3af;
+}
+
+/* --- 사진 업로드 모달 스타일 --- */
+.uploadDropzone {
+  border: 2px dashed #4b5563;
+  border-radius: 0.5rem;
+  padding: 2rem;
+  text-align: center;
+  cursor: pointer;
+  margin-bottom: 1rem;
+}
+.uploadDropzone:hover {
+  background-color: #374151;
+}
+.previewGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.previewContainer {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  cursor: grab;
+  border: 2px solid transparent;
+  border-radius: 0.375rem;
+}
+.previewContainer:active {
+  cursor: grabbing;
+}
+.dragging {
+  opacity: 0.5;
+}
+.previewImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0.25rem;
+}
+.deletePreviewButton {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background-color: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  font-size: 1rem;
+  font-weight: bold;
+  line-height: 24px;
+  text-align: center;
+  cursor: pointer;
+  z-index: 10;
+}
+
+/* --- 사진 확대 모달 스타일 --- */
+.photoModalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+
+.photoModalContent {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
 }

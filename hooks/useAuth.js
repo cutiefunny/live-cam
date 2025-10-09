@@ -2,13 +2,14 @@
 import { useEffect } from 'react';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as firebaseSignOut, updateProfile } from "firebase/auth";
 import { ref, set, onValue, off, onDisconnect, get, remove, update, push, runTransaction, serverTimestamp } from 'firebase/database';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { auth, database, storage } from '@/lib/firebase';
 import { processImageForUpload } from '@/lib/imageUtils';
 import useAppStore from '@/store/useAppStore';
+import { nanoid } from 'nanoid';
 
 export function useAuth() {
-  const { user, setUser, setIsCreator, setIsAuthLoading, showToast } = useAppStore();
+  const { user, setUser, setIsCreator, setIsAuthLoading, showToast, setFollowing } = useAppStore();
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -21,18 +22,31 @@ export function useAuth() {
   useEffect(() => {
     if (!user) {
       setIsCreator(false);
+      setFollowing([]); // ✨ [추가] 로그아웃 시 팔로잉 목록 초기화
       return;
     }
 
     const userRef = ref(database, `users/${user.uid}`);
-    const unsubscribeDB = onValue(userRef, (snapshot) => {
+    const followingRef = ref(database, `users/${user.uid}/following`);
+
+    const dbUnsubscribe = onValue(userRef, (snapshot) => {
       const isUserCreator = snapshot.exists() && snapshot.val().isCreator === true;
       setIsCreator(isUserCreator);
     });
+    
+    // ✨ [추가] 사용자의 팔로잉 목록을 실시간으로 감지하여 스토어에 업데이트
+    const followingListener = onValue(followingRef, (snapshot) => {
+        const followingData = snapshot.val() || {};
+        setFollowing(Object.keys(followingData));
+    });
 
-    return () => unsubscribeDB();
-  }, [user, setIsCreator]);
+    return () => {
+        dbUnsubscribe();
+        off(followingRef, 'value', followingListener);
+    };
+  }, [user, setIsCreator, setFollowing]);
 
+  // ... (signIn, signOut, goOnline, goOffline, updateUserProfile, etc. are unchanged)
   const signIn = async () => {
     const provider = new GoogleAuthProvider();
     try {
@@ -133,10 +147,9 @@ export function useAuth() {
     const creatorShareRate = settingsSnapshot.val()?.creatorShareRate || 90;
     const payoutAmount = Math.floor(cost * (creatorShareRate / 100));
 
-    // 1. 사용자 코인 차감
     const { committed } = await runTransaction(userCoinRef, (currentCoins) => {
       if (currentCoins < cost) {
-        return; // 잔액 부족으로 중단
+        return;
       }
       return currentCoins - cost;
     });
@@ -145,11 +158,9 @@ export function useAuth() {
       throw new Error("Not enough coins");
     }
 
-    // 2. 크리에이터에게 코인 지급
     const creatorCoinRef = ref(database, `users/${toUserId}/coins`);
     await runTransaction(creatorCoinRef, (currentCoins) => (currentCoins || 0) + payoutAmount);
 
-    // 3. 실시간 이벤트 전송 (애니메이션용)
     const roomGiftsRef = ref(database, `rooms/${roomId}/gifts`);
     await push(roomGiftsRef, {
       ...gift,
@@ -158,7 +169,6 @@ export function useAuth() {
       timestamp: Date.now(),
     });
     
-    // 4. 코인 사용 내역 기록
     const coinHistoryRef = ref(database, 'coin_history');
     const fromUserData = await get(ref(database, `users/${fromUserId}`));
     const toUserData = await get(ref(database, `users/${toUserId}`));
@@ -183,7 +193,6 @@ export function useAuth() {
     });
   };
 
-  // ✨ [추가] 별점 제출 함수
   const submitRating = async (creatorId, rating, comment) => {
     if (!user) {
       showToast('로그인이 필요합니다.', 'error');
@@ -191,7 +200,6 @@ export function useAuth() {
     }
     
     try {
-      // 1. 개별 평가 기록 저장
       const ratingRef = ref(database, `creator_ratings/${creatorId}`);
       await push(ratingRef, {
         rating: rating,
@@ -201,7 +209,6 @@ export function useAuth() {
         timestamp: serverTimestamp()
       });
 
-      // 2. 크리에이터 프로필의 평균 별점 및 카운트 업데이트 (트랜잭션)
       const creatorProfileRef = ref(database, `creator_profiles/${creatorId}`);
       await runTransaction(creatorProfileRef, (profile) => {
         if (profile) {
@@ -214,7 +221,6 @@ export function useAuth() {
           profile.ratingCount = newRatingCount;
           profile.averageRating = newAverageRating;
         } else {
-          // 프로필이 없는 경우 새로 생성
           profile = {
             bio: '',
             ratingCount: 1,
@@ -231,6 +237,107 @@ export function useAuth() {
     }
   };
 
+  // ... (uploadCreatorPhotos, deleteCreatorPhoto, updateCreatorPhotoOrder are unchanged)
+  const uploadCreatorPhotos = async (files) => {
+    if (!user) throw new Error("User not logged in");
 
-  return { signIn, signOut, goOnline, goOffline, updateUserProfile, requestCoinCharge, sendGift, submitRating };
+    const uploadPromises = files.map(async (file) => {
+      const photoId = nanoid(10);
+      const imageRef = storageRef(storage, `creator_photos/${user.uid}/${photoId}`);
+      const processedImage = await processImageForUpload(file, 800);
+      const snapshot = await uploadBytes(imageRef, processedImage);
+      const url = await getDownloadURL(snapshot.ref);
+      return { id: photoId, url };
+    });
+
+    const newPhotos = await Promise.all(uploadPromises);
+
+    const photoRef = ref(database, `creator_profiles/${user.uid}/photos`);
+    const existingPhotosSnapshot = await get(photoRef);
+    const existingPhotosData = existingPhotosSnapshot.val();
+    
+    let currentPhotos = Array.isArray(existingPhotosData) ? existingPhotosData : (existingPhotosData ? Object.values(existingPhotosData) : []);
+
+    newPhotos.forEach((photo) => {
+        currentPhotos.push(photo);
+    });
+
+    const photosToSave = currentPhotos.map((photo, index) => ({ ...photo, order: index }));
+
+    await set(photoRef, photosToSave);
+  };
+
+  const deleteCreatorPhoto = async (photoId) => {
+    if (!user) throw new Error("User not logged in");
+    if (!photoId) {
+      console.error("Delete failed: photoId is undefined.");
+      return;
+    }
+    
+    const photosRef = ref(database, `creator_profiles/${user.uid}/photos`);
+    const snapshot = await get(photosRef);
+    const existingPhotosData = snapshot.val();
+    
+    let currentPhotos = Array.isArray(existingPhotosData) ? existingPhotosData : (existingPhotosData ? Object.values(existingPhotosData) : []);
+    
+    const photoToDelete = currentPhotos.find(p => p.id === photoId);
+    
+    if (photoToDelete) {
+      const imageRef = storageRef(storage, `creator_photos/${user.uid}/${photoId}`);
+      try {
+        await deleteObject(imageRef);
+      } catch (error) {
+        if (error.code === 'storage/object-not-found') {
+          console.log("Storage object not found, but proceeding to delete from database.");
+        } else {
+          throw error;
+        }
+      }
+
+      let newPhotos = currentPhotos.filter(p => p.id !== photoId);
+      newPhotos = newPhotos.map((photo, index) => ({ ...photo, order: index }));
+
+      await set(photosRef, newPhotos);
+    }
+  };
+
+  const updateCreatorPhotoOrder = async (photos) => {
+    if (!user) throw new Error("User not logged in");
+
+    const photosToSave = photos.map((photo, index) => ({
+      ...photo,
+      order: index
+    }));
+
+    const photosRef = ref(database, `creator_profiles/${user.uid}/photos`);
+    await set(photosRef, photosToSave);
+  };
+
+  // ✨ [추가] 팔로우/언팔로우 토글 함수
+  const toggleFollowCreator = async (creatorId) => {
+    if (!user) {
+        showToast('로그인이 필요합니다.', 'error');
+        return;
+    }
+    if (user.uid === creatorId) return;
+
+    const currentUserFollowingRef = ref(database, `users/${user.uid}/following/${creatorId}`);
+    const creatorFollowersRef = ref(database, `users/${creatorId}/followers/${user.uid}`);
+    
+    const snapshot = await get(currentUserFollowingRef);
+    
+    if (snapshot.exists()) {
+        // 언팔로우
+        await remove(currentUserFollowingRef);
+        await remove(creatorFollowersRef);
+        showToast('크리에이터를 언팔로우했습니다.', 'info');
+    } else {
+        // 팔로우
+        await set(currentUserFollowingRef, true);
+        await set(creatorFollowersRef, true);
+        showToast('크리에이터를 팔로우했습니다.', 'success');
+    }
+  };
+
+  return { signIn, signOut, goOnline, goOffline, updateUserProfile, requestCoinCharge, sendGift, submitRating, uploadCreatorPhotos, deleteCreatorPhoto, updateCreatorPhotoOrder, toggleFollowCreator };
 }

@@ -7,11 +7,13 @@ import styles from './CreatorList.module.css';
 const CreatorList = ({ rankedCreators, user, onCallCreator }) => {
   const [showAllCreators, setShowAllCreators] = useState(false);
 
+  // 팔로우 목록과 중복되지 않도록 rankedCreators는 이미 필터링된 상태로 가정합니다.
   const creatorsToShow = rankedCreators.filter(creator => creator && creator.uid);
 
   return (
-    <>
-      <h2 className={styles.creatorListTitle}>🏆 크리에이터 순위</h2>
+    // ✨ [수정] 전체를 감싸는 컨테이너와 제목 추가
+    <div className={styles.container}>
+      <h2 className={styles.title}>🏆 크리에이터 순위</h2>
       <div className={styles.creatorList}>
         {creatorsToShow.length > 0 ? 
           creatorsToShow
@@ -39,7 +41,7 @@ const CreatorList = ({ rankedCreators, user, onCallCreator }) => {
                 )}
               </div>
             )) 
-          : (<p>등록된 크리에이터가 없습니다.</p>)
+          : (<p className={styles.emptyListText}>표시할 다른 크리에이터가 없습니다.</p>)
         }
       </div>
       {!showAllCreators && creatorsToShow.length > 3 && (
@@ -47,7 +49,7 @@ const CreatorList = ({ rankedCreators, user, onCallCreator }) => {
           모든 크리에이터 보기
         </button>
       )}
-    </>
+    </div>
   );
 };
 
