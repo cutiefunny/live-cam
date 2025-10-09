@@ -6,6 +6,7 @@ import Video from '@/components/Video';
 import Controls from '@/components/Controls';
 import CallQualityIndicator from '@/components/CallQualityIndicator';
 import GiftModal from '@/components/GiftModal';
+import LeaveConfirmModal from '@/components/LeaveConfirmModal'; // ✨ [추가]
 import { useCoin } from '@/hooks/useCoin';
 import { useWebRTC } from '@/hooks/useWebRTC';
 import { useSettings } from '@/hooks/useSettings';
@@ -41,8 +42,15 @@ export default function Room() {
   const backPressState = useRef({ pressedOnce: false, timeoutId: null });
   const callPartnerRef = useRef(null); 
 
+  // ✨ [추가] 모달 상태 및 통화 정보 Ref
+  const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
+  const [leaveDetails, setLeaveDetails] = useState(null);
+  const callStartTimeRef = useRef(null);
+  const minutesChargedRef = useRef(0);
+
   const remotePeerEntry = otherUser ? peers[otherUser.uid] : null;
   const callQuality = useCallQuality(remotePeerEntry?.call);
+  const [callStarted, setCallStarted] = useState(false);
 
   // 방에 입장한 다른 사용자 정보를 Firebase에서 가져옵니다.
   useEffect(() => {
@@ -59,40 +67,56 @@ export default function Room() {
     const roomUsersRef = ref(database, `rooms/${roomId}/users`);
     const listener = onValue(roomUsersRef, (snapshot) => {
         const usersInRoom = snapshot.val();
+
+        if (!usersInRoom && callStarted) {
+            executeLeaveRoom();
+            return;
+        }
+
         if (usersInRoom) {
             const otherUserId = Object.keys(usersInRoom).find(uid => uid !== user.uid);
             if (otherUserId) {
                 const partnerInfo = { uid: otherUserId, ...usersInRoom[otherUserId] };
                 setOtherUser(partnerInfo);
                 callPartnerRef.current = partnerInfo;
+                if (!callStarted) setCallStarted(true);
             } else {
                 setOtherUser(null);
                 callPartnerRef.current = null;
+                if (callStarted) {
+                    executeLeaveRoom();
+                }
             }
         }
     });
 
-    return () => off(roomUsersRef, 'value', listener);
-  }, [user, roomId]);
+    return () => {
+      off(roomUsersRef, 'value', listener);
+      remove(currentUserRef).then(() => {
+        get(roomUsersRef).then((snapshot) => {
+            if (!snapshot.exists()) {
+                remove(ref(database, `rooms/${roomId}`));
+            }
+        });
+      });
+    };
+  }, [user, roomId, callStarted]);
 
-  // ✨ [수정] 로컬 미디어 스트림을 가져오는 로직 (무한 루프 해결)
+  // 로컬 미디어 스트림을 가져오는 로직
   useEffect(() => {
     if (isAuthLoading || !user) {
       if (!isAuthLoading) router.push('/');
       return;
     }
   
-    let streamRef = null; // 스트림을 직접 참조할 변수
+    let streamRef = null;
     let isEffectActive = true;
   
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
         if (isEffectActive) {
-          streamRef = stream; // 변수에 스트림 할당
+          streamRef = stream;
           setMyStream(stream);
-          if (userVideo.current) {
-            userVideo.current.srcObject = stream;
-          }
         }
       })
       .catch(err => {
@@ -104,14 +128,19 @@ export default function Room() {
   
     return () => {
       isEffectActive = false;
-      // 상태(myStream) 대신 직접 참조하던 스트림 변수를 사용해 트랙을 중지
       if (streamRef) {
         console.log('[Cleanup] Stopping media tracks.');
         streamRef.getTracks().forEach(track => track.stop());
       }
     };
-    // ✨ [수정] 의존성 배열에서 myStream과 setMyStream 제거
-  }, [isAuthLoading, user, router]);
+  }, [isAuthLoading, user, router, setMyStream, showToast]);
+
+  // myStream 상태가 변경될 때마다 비디오 요소에 스트림을 연결
+  useEffect(() => {
+    if (myStream && userVideo.current) {
+      userVideo.current.srcObject = myStream;
+    }
+  }, [myStream]);
   
 
   // 상대방이 입장했고, 아직 연결되지 않았다면 (그리고 내가 크리에이터가 아니라면) 통화를 겁니다.
@@ -124,10 +153,22 @@ export default function Room() {
 
   // 코인 차감 및 통화 기록 로직
   useEffect(() => {
-    if (!remotePeerEntry || !settings || isCreator || !user) {
+    if (!remotePeerEntry || !settings || !user) {
+        if (remotePeerEntry === null) {
+            callStartTimeRef.current = null;
+            minutesChargedRef.current = 0;
+        }
       return;
     }
+
+    if (!callStartTimeRef.current) {
+      callStartTimeRef.current = Date.now();
+    }
   
+    if (isCreator) {
+      return;
+    }
+
     const remotePeerId = remotePeerEntry.call.peer;
     const partnerInfo = callPartnerRef.current;
     if (!partnerInfo) return;
@@ -145,6 +186,7 @@ export default function Room() {
   
     const intervalId = setInterval(() => {
       deductCoin(user.uid, remotePeerId, costPerMinute, `Video call minute charge`);
+      minutesChargedRef.current += 1;
     }, 60000);
     coinDeductionIntervalRef.current = intervalId;
   
@@ -189,14 +231,15 @@ export default function Room() {
           resolve(true);
         } else {
           showToast('코인이 부족하여 통화를 종료합니다.', 'error');
-          handleLeaveRoom();
+          executeLeaveRoom();
           resolve(false);
         }
       });
     });
   };
   
-  const handleLeaveRoom = () => {
+  // ✨ [수정] 실제 방을 나가는 로직을 별도 함수로 분리
+  const executeLeaveRoom = () => {
     if (callEndedRef.current) return;
     callEndedRef.current = true;
 
@@ -213,13 +256,44 @@ export default function Room() {
     }
   };
   
+  // ✨ [수정] 방 나가기 버튼/뒤로가기 시 모달을 띄우는 함수
+  const handleLeaveRoom = () => {
+    if (!callStartTimeRef.current) {
+        executeLeaveRoom();
+        return;
+    }
+
+    const duration = Date.now() - callStartTimeRef.current;
+    const details = { duration, isCreator, coins: 0, fee: 0 };
+
+    if (settings) {
+      const perMinuteCost = settings.costPerMinute || 0;
+      const startCost = settings.costToStart || 0;
+      const shareRate = settings.creatorShareRate || 0;
+      const minutes = minutesChargedRef.current;
+
+      if (isCreator) {
+          const payoutPerMinute = Math.floor(perMinuteCost * (shareRate / 100));
+          const coinsEarned = minutes * payoutPerMinute;
+          const totalRevenue = startCost + (minutes * perMinuteCost);
+          details.coins = coinsEarned;
+          details.fee = totalRevenue - coinsEarned;
+      } else {
+          details.coins = startCost + (minutes * perMinuteCost);
+      }
+    }
+
+    setLeaveDetails(details);
+    setIsLeaveModalOpen(true);
+  };
+
   useEffect(() => {
     history.pushState(null, '', location.href);
     const handlePopState = () => {
       history.pushState(null, '', location.href);
       if (backPressState.current.pressedOnce) {
         if (backPressState.current.timeoutId) clearTimeout(backPressState.current.timeoutId);
-        handleLeaveRoom();
+        handleLeaveRoom(); // ✨ [수정] 모달 트리거 함수 호출
       } else {
         backPressState.current.pressedOnce = true;
         showToast('한 번 더 누르면 통화가 종료됩니다.', 'info');
@@ -230,7 +304,7 @@ export default function Room() {
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [showToast, handleLeaveRoom]);
+  }, [showToast, handleLeaveRoom]); // ✨ [수정] 의존성 배열에 handleLeaveRoom 추가
 
   useEffect(() => {
     if (giftAnimation) {
@@ -319,6 +393,14 @@ export default function Room() {
           onSendGift={handleSendGift}
         />
       )}
+
+      {/* ✨ [추가] 통화 종료 확인 모달 렌더링 */}
+      <LeaveConfirmModal
+        show={isLeaveModalOpen}
+        onConfirm={executeLeaveRoom}
+        onCancel={() => setIsLeaveModalOpen(false)}
+        details={leaveDetails}
+      />
     </div>
   );
 }
