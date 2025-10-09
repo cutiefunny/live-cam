@@ -3,7 +3,6 @@
 import { useState, useEffect, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { nanoid } from 'nanoid';
-// ✨ [수정] 분리된 훅 가져오기
 import { useAuth } from '@/hooks/useAuth';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useCreator } from '@/hooks/useCreator';
@@ -20,7 +19,6 @@ import RatingModal from '@/components/RatingModal';
 import CreatorList from '@/components/CreatorList';
 import FollowingList from '@/components/FollowingList';
 
-// ... (IncomingCallModal, RatingTrigger 함수는 변경 없음) ...
 const IncomingCallModal = ({ callRequest, onAccept, onDecline }) => {
     if (!callRequest) return null;
     const { requesterName, requesterPhotoURL } = callRequest;
@@ -59,10 +57,9 @@ function RatingTrigger() {
 }
 
 export default function Home() {
-  // ✨ [수정] 역할에 맞는 훅 사용
   const { signIn, signOut } = useAuth();
   const { updateUserProfile } = useUserProfile();
-  const { goOnline, goOffline } = useCreator();
+  const { goOnline, goOffline, isOnline } = useCreator(); // ✨ [수정] isOnline 상태를 훅에서 직접 가져옴
   const { requestCoinCharge } = useCoin();
   const { settings, isLoading: isSettingsLoading } = useSettings();
   const router = useRouter();
@@ -87,23 +84,19 @@ export default function Home() {
     following,
   } = useAppStore();
 
-  const [isOnline, setIsOnline] = useState(false);
   const [callHistory, setCallHistory] = useState([]);
   const [allCreators, setAllCreators] = useState([]);
 
-  // ... (useEffect 훅들은 변경 없음) ...
+  // ✨ [수정] creators 목록 변화에 따라 isOnline 상태를 변경하던 로직 제거
   useEffect(() => {
     const creatorsRef = ref(database, 'creators');
     const listener = onValue(creatorsRef, (snapshot) => {
       const data = snapshot.val();
       const creatorList = data ? Object.values(data) : [];
       setCreators(creatorList);
-      if (user) {
-        setIsOnline(creatorList.some(c => c.uid === user.uid));
-      }
     });
     return () => off(creatorsRef, 'value', listener);
-  }, [setCreators, user]);
+  }, [setCreators]);
 
   useEffect(() => {
     const usersRef = ref(database, 'users');
@@ -179,7 +172,6 @@ export default function Home() {
     return { rankedCreators: rankingList, followingCreators: followingList };
   }, [allCreators, creators, callHistory, following]);
 
-  // ... (handleCallCreator, handleAcceptCall, handleDeclineCall 함수들은 변경 없음) ...
   const handleCallCreator = async (creator) => {
     if (!user) {
       showToast("로그인 후 이용해주세요.", 'error');

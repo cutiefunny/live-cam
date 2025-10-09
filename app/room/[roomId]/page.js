@@ -6,7 +6,7 @@ import Video from '@/components/Video';
 import Controls from '@/components/Controls';
 import CallQualityIndicator from '@/components/CallQualityIndicator';
 import GiftModal from '@/components/GiftModal';
-import { useAuth } from '@/hooks/useAuth';
+import { useCoin } from '@/hooks/useCoin'; // useAuth -> useCoin으로 수정
 import { useWebRTC } from '@/hooks/useWebRTC';
 import { useRoom } from '@/hooks/useRoom';
 import { useSettings } from '@/hooks/useSettings';
@@ -17,13 +17,14 @@ import styles from './Room.module.css';
 export default function Room() {
   const { roomId } = useParams();
   const router = useRouter();
-  const { sendGift } = useAuth();
+  const { sendGift } = useCoin(); // useAuth -> useCoin으로 수정
   
   const user = useAppStore((state) => state.user);
   const isAuthLoading = useAppStore((state) => state.isAuthLoading);
   const isCreator = useAppStore((state) => state.isCreator);
   const giftAnimation = useAppStore((state) => state.giftAnimation);
   const setGiftAnimation = useAppStore((state) => state.setGiftAnimation);
+  const showToast = useAppStore((state) => state.showToast); // ✨ [추가]
 
   const { settings, isLoading: isSettingsLoading } = useSettings();
   const userVideo = useRef();
@@ -49,8 +50,61 @@ export default function Room() {
   const callQuality = useCallQuality(mainPeer?.peer);
   
   const callEndedRef = useRef(false);
-  
+  const backPressState = useRef({ pressedOnce: false, timeoutId: null }); // ✨ [추가]
+
   console.log('[RoomPage] Component rendering.');
+  
+  const handleLeaveRoom = () => {
+    callEndedRef.current = true;
+    if (backPressState.current.timeoutId) {
+      clearTimeout(backPressState.current.timeoutId);
+    }
+    
+    // popstate 리스너를 비활성화하고 실제 뒤로가기 동작을 수행
+    window.onpopstate = null; 
+    
+    if (!isCreator && mainPeer) {
+      const query = `?callEnded=true&creatorId=${mainPeer.peerID}&creatorName=${mainPeer.displayName}`;
+      router.replace(`/${query}`);
+    } else {
+      router.replace('/');
+    }
+  };
+
+  // ✨ [추가 시작] --- 뒤로가기 버튼 처리 로직 ---
+  useEffect(() => {
+    history.pushState(null, '', location.href);
+
+    const handlePopState = () => {
+      // 뒤로가기를 막기 위해 다시 현재 히스토리를 푸시
+      history.pushState(null, '', location.href);
+
+      if (backPressState.current.pressedOnce) {
+        if (backPressState.current.timeoutId) {
+          clearTimeout(backPressState.current.timeoutId);
+        }
+        handleLeaveRoom();
+      } else {
+        backPressState.current.pressedOnce = true;
+        showToast('한 번 더 누르면 통화가 종료됩니다.', 'info');
+
+        backPressState.current.timeoutId = setTimeout(() => {
+          backPressState.current.pressedOnce = false;
+          backPressState.current.timeoutId = null;
+        }, 2000); // 2초 안에 다시 눌러야 종료
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      if (backPressState.current.timeoutId) {
+        clearTimeout(backPressState.current.timeoutId);
+      }
+    };
+  }, [showToast, handleLeaveRoom]); // 의존성 배열에 추가
+  // ✨ [추가 끝]
 
   useEffect(() => {
     if (giftAnimation) {
@@ -123,27 +177,17 @@ export default function Room() {
       if (!callEndedRef.current && peers.length === 0) {
         console.log('[RoomPage] Timeout: No peers connected after 20 seconds.');
         alert("상대방이 응답하지 않아 통화를 종료합니다.");
-        router.push('/');
+        handleLeaveRoom(); // ✨ [수정] 통일된 종료 함수 사용
       }
     }, 20000);
 
     return () => clearTimeout(timeoutId);
-  }, [peers, user, mediaStatus, router, iceServersReady]);
+  }, [peers, user, mediaStatus, router, iceServersReady, handleLeaveRoom]);
 
   useEffect(() => {
     console.log('[RoomPage] ICE server status:', { iceServersReady });
   }, [iceServersReady]);
   
-  const handleLeaveRoom = () => {
-    callEndedRef.current = true;
-    if (!isCreator && mainPeer) {
-      const query = `?callEnded=true&creatorId=${mainPeer.peerID}&creatorName=${mainPeer.displayName}`;
-      router.push(`/${query}`);
-    } else {
-      router.push('/');
-    }
-  }
-
   const handleSendGift = async (gift) => {
     if (!user || !mainPeer) return;
     await sendGift(user.uid, mainPeer.peerID, gift, roomId);
@@ -196,7 +240,6 @@ export default function Room() {
           <div className={styles.remoteVideoContainer}>
             <Video 
               key={mainPeer.peerID}
-              // ✨ [수정] peer 객체 대신 remoteStream을 전달합니다.
               stream={mainPeer.remoteStream} 
               photoURL={mainPeer.photoURL} 
               displayName={mainPeer.displayName} 

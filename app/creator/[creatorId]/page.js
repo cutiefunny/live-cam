@@ -176,7 +176,6 @@ export default function CreatorProfilePage() {
           </div>
 
           <div className={styles.profileBody}>
-            <h2 className={styles.sectionTitle}>소개</h2>
             <p className={styles.bio}>
               {creatorProfile.bio || (isOwner ? '소개글을 작성해주세요.' : '작성된 소개가 없습니다.')}
             </p>
