@@ -2,14 +2,15 @@
 'use client';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
 import { useWebRTC } from '@/hooks/useWebRTC';
 import { useSettings } from '@/hooks/useSettings';
 import { useCoin } from '@/hooks/useCoin';
 import { useCallQuality } from '@/hooks/useCallQuality';
 import useAppStore from '@/store/useAppStore';
-import { database } from '@/lib/firebase';
-import { ref, onValue, off, remove, set, onDisconnect, serverTimestamp as rtdbServerTimestamp, push } from 'firebase/database';
+import { database, firestore } from '@/lib/firebase';
+import { ref, onValue, off, remove, set, onDisconnect, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
+import { doc, collection, addDoc, serverTimestamp, runTransaction as firestoreTransaction } from 'firebase/firestore';
+
 
 import Video from '@/components/Video';
 import Controls from '@/components/Controls';
@@ -23,11 +24,22 @@ const createDummyStream = () => {
   canvas.width = 1;
   canvas.height = 1;
   const ctx = canvas.getContext('2d');
-  ctx.fillRect(0, 0, 1, 1);
+  if (ctx) {
+      ctx.fillRect(0, 0, 1, 1);
+  }
   const stream = canvas.captureStream();
+  // 오디오 트랙도 추가하여 일부 브라우저 호환성 문제 해결
+  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  const oscillator = audioContext.createOscillator();
+  const dst = oscillator.connect(audioContext.createMediaStreamDestination());
+  oscillator.start();
+  const audioTrack = dst.stream.getAudioTracks()[0];
+  stream.addTrack(audioTrack);
+  
   stream.getTracks().forEach(track => track.enabled = false);
   return stream;
 };
+
 
 export default function Room() {
   const { roomId } = useParams();
@@ -58,19 +70,21 @@ export default function Room() {
 
   // 1. Initialize media stream
   useEffect(() => {
+    let streamInstance = null;
     const initStream = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        setMyStream(stream);
+        streamInstance = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        setMyStream(streamInstance);
       } catch (err) {
         showToast('카메라/마이크 접근에 실패하여 관전자 모드로 참여합니다.', 'error');
-        setMyStream(createDummyStream());
+        streamInstance = createDummyStream();
+        setMyStream(streamInstance);
       }
     };
     initStream();
     return () => {
-      if (myStream) {
-        myStream.getTracks().forEach(track => track.stop());
+      if (streamInstance) {
+        streamInstance.getTracks().forEach(track => track.stop());
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -112,8 +126,9 @@ export default function Room() {
 
     return () => {
       off(roomUsersRef, 'value', usersListener);
-      remove(currentUserRef);
+      remove(currentUserRef).catch(err => console.error("Failed to remove user from room on cleanup:", err));
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, roomId]);
 
   // 3. WebRTC: Call other user when they join
@@ -125,11 +140,55 @@ export default function Room() {
         callPeer(otherUser.uid);
       }
     }
-  }, [peer, otherUser, connections, remoteStreams, callPeer, user]);
+  }, [peer, otherUser, connections, remoteStreams, callPeer, user.uid]);
   
-  // 4. Coin Deduction Logic
+  // ✨ [수정] executeLeaveRoom을 handleLeaveRoom보다 먼저 선언합니다.
+  const executeLeaveRoom = useCallback((duration) => {
+    if (callEndedRef.current) return;
+    callEndedRef.current = true;
+
+    disconnectAll();
+    if(coinDeductionIntervalRef.current) clearInterval(coinDeductionIntervalRef.current);
+
+    const partnerInfo = callPartnerRef.current;
+    if (!isCreator && partnerInfo && duration > 10000) { // 10초 이상 통화 시
+        // Firestore에 통화 기록 저장
+        const historyRef = collection(firestore, 'call_history');
+        addDoc(historyRef, {
+            callerId: user.uid,
+            callerName: user.displayName,
+            calleeId: partnerInfo.uid,
+            calleeName: partnerInfo.displayName,
+            roomId: roomId,
+            timestamp: serverTimestamp(),
+            duration: duration
+        });
+        openRatingModal({ creatorId: partnerInfo.uid, creatorName: partnerInfo.displayName });
+    }
+    
+    router.replace('/');
+  }, [disconnectAll, isCreator, openRatingModal, router, roomId, user]);
+
+  // 4. Leave Room Logic
+  const handleLeaveRoom = useCallback((immediate = false) => {
+    if (isLeavingRef.current) return;
+    isLeavingRef.current = true;
+    
+    const duration = callStartTimeRef.current ? Date.now() - callStartTimeRef.current : 0;
+    
+    if (immediate) {
+        executeLeaveRoom(duration);
+        return;
+    }
+    
+    setLeaveDetails({ duration });
+    setIsLeaveModalOpen(true);
+  }, [executeLeaveRoom]);
+
+
+  // 5. Coin Deduction Logic
   useEffect(() => {
-    if (isCreator || !remoteStream || !settings) return;
+    if (isCreator || !remoteStream || !settings || !user || !callPartnerRef.current) return;
 
     const { costToStart, costPerMinute, creatorShareRate } = settings;
 
@@ -142,11 +201,11 @@ export default function Room() {
         await firestoreTransaction(firestore, async (transaction) => {
           const userDoc = await transaction.get(userCoinRef);
           const currentCoins = userDoc.data()?.coins || 0;
-          if (currentCoins < amount) throw new Error('Not enough coins');
+          if (currentCoins < amount) throw new Error('코인이 부족합니다.');
           
           transaction.update(userCoinRef, { coins: currentCoins - amount });
           
-          if (type === 'minute') {
+          if (type === 'minute' || type === 'start') {
             const creatorDoc = await transaction.get(creatorCoinRef);
             const creatorCoins = creatorDoc.data()?.coins || 0;
             transaction.update(creatorCoinRef, { coins: creatorCoins + payoutAmount });
@@ -178,56 +237,10 @@ export default function Room() {
         clearInterval(coinDeductionIntervalRef.current);
       }
     };
-  }, [isCreator, remoteStream, settings, user, showToast]);
-  
-  // 5. Leave Room Logic
-  const handleLeaveRoom = useCallback((immediate = false) => {
-    if (isLeavingRef.current) return;
-    isLeavingRef.current = true;
-    
-    const duration = callStartTimeRef.current ? Date.now() - callStartTimeRef.current : 0;
-    
-    if (immediate) {
-        executeLeaveRoom(duration);
-        return;
-    }
-    
-    const { costToStart, costPerMinute } = settings;
-    const minutes = Math.floor(duration / 60000);
-    const coinsUsed = costToStart + (minutes * costPerMinute);
-    
-    setLeaveDetails({ duration, coins: coinsUsed });
-    setIsLeaveModalOpen(true);
-  }, [settings, executeLeaveRoom]);
+  }, [isCreator, remoteStream, settings, user, showToast, handleLeaveRoom]);
 
-  const executeLeaveRoom = useCallback((duration) => {
-    if (callEndedRef.current) return;
-    callEndedRef.current = true;
-
-    disconnectAll();
-    if(coinDeductionIntervalRef.current) clearInterval(coinDeductionIntervalRef.current);
-
-    const partnerInfo = callPartnerRef.current;
-    if (!isCreator && partnerInfo && duration > 10000) { // 10초 이상 통화 시
-        // Firestore에 통화 기록 저장
-        const historyRef = collection(firestore, 'call_history');
-        addDoc(historyRef, {
-            callerId: user.uid,
-            callerName: user.displayName,
-            calleeId: partnerInfo.uid,
-            calleeName: partnerInfo.displayName,
-            roomId: roomId,
-            timestamp: serverTimestamp(),
-            duration: duration
-        });
-        openRatingModal({ creatorId: partnerInfo.uid, creatorName: partnerInfo.displayName });
-    }
-    
-    router.replace('/');
-  }, [disconnectAll, isCreator, openRatingModal, router, roomId, user]);
-  
   if (isAuthLoading || isSettingsLoading || !user) {
-    return <div>Loading...</div>;
+    return <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '1.25rem'}}>Loading...</div>;
   }
 
   return (
@@ -269,7 +282,7 @@ export default function Room() {
           )}
         </footer>
       )}
-      {isGiftModalOpen && (
+      {isGiftModalOpen && otherUser && (
         <GiftModal
           onClose={() => setIsGiftModalOpen(false)}
           onSendGift={(gift) => sendGift(user.uid, otherUser.uid, gift, roomId)}
