@@ -217,7 +217,6 @@ export default function Room() {
 
     const { costToStart, costPerMinute, creatorShareRate } = settings;
 
-    // ✨ [수정] 트랜잭션 로직을 규칙에 맞게 수정
     const deduct = async (amount, type, description) => {
       const userCoinRef = doc(firestore, 'users', user.uid);
       const creatorCoinRef = doc(firestore, 'users', callPartnerRef.current.uid);
@@ -301,7 +300,8 @@ export default function Room() {
         clearInterval(coinDeductionIntervalRef.current);
       }
     };
-  }, [isCreator, remoteStream, settings, user, showToast, handleLeaveRoom, creatorShareRate, costPerMinute, costToStart]);
+    // ✨ [수정] useEffect 의존성 배열에서 내부 변수들을 제거합니다.
+  }, [isCreator, remoteStream, settings, user, showToast, handleLeaveRoom]);
 
   if (isAuthLoading || isSettingsLoading || !user) {
     return <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '1.25rem'}}>Loading...</div>;
