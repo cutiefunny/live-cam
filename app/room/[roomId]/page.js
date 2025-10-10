@@ -1,6 +1,6 @@
 // app/room/[roomId]/page.js
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Video from '@/components/Video';
 import Controls from '@/components/Controls';
@@ -54,94 +54,102 @@ export default function Room() {
   const { settings, isLoading: isSettingsLoading } = useSettings();
   const userVideo = useRef();
   
-  const { peer, myStream, peers, callPeer, setMyStream } = useWebRTC();
-  const [iceServers, setIceServers] = useState([]);
-  const peerRef = useRef(null);
+  const { myStream, peers, callPeer, setMyStream } = useWebRTC();
   
   const [otherUser, setOtherUser] = useState(null);
   const [isGiftModalOpen, setIsGiftModalOpen] = useState(false);
   
   const callEndedRef = useRef(false);
-  const backPressState = useRef({ pressedOnce: false, timeoutId: null });
   const callPartnerRef = useRef(null); 
-
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
   const [leaveDetails, setLeaveDetails] = useState(null);
   const callStartTimeRef = useRef(null);
 
   const remotePeerEntry = otherUser ? peers[otherUser.uid] : null;
   const callQuality = useCallQuality(remotePeerEntry?.call);
-  const [callStarted, setCallStarted] = useState(false);
   
   useEffect(() => {
-    fetch('/api/turn')
-      .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch'))
-      .then(data => setIceServers(data.iceServers))
-      .catch(err => {
-        console.error("[WebRTC] Could not fetch ICE servers.", err);
-        showToast('TURN 서버 연결에 실패했습니다.', 'warn');
-        setIceServers([
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-        ]);
-      });
-  }, [showToast]);
-
-  useEffect(() => {
-    if (isAuthLoading || !user) {
-      if (!isAuthLoading) router.push('/');
+    if (isAuthLoading) return;
+    if (!user) {
+      router.push('/');
       return;
     }
 
     let streamRef = null;
+    let peer = null;
+    const currentUserRef = ref(database, `rooms/${roomId}/users/${user.uid}`);
+    const roomUsersRef = ref(database, `rooms/${roomId}/users`);
+    let roomUsersListener = null;
 
     const setup = async () => {
-      // 1. Peer 객체 초기화 (ICE 서버 정보가 준비된 후에)
-      if (iceServers.length > 0) {
-        peerRef.current = initializePeer(user, iceServers);
-      }
+      const iceServers = await fetch('/api/turn')
+        .then(res => {
+          if (!res.ok) throw new Error('Failed to fetch ICE servers');
+          return res.json();
+        })
+        .then(data => data.iceServers)
+        .catch(err => {
+          console.error("[WebRTC] Could not fetch ICE servers.", err);
+          showToast('TURN 서버 연결에 실패했습니다.', 'warn');
+          return [{ urls: 'stun:stun.l.google.com:19302' }];
+        });
 
-      // 2. 미디어 스트림 가져오기 또는 더미 스트림 생성
+      peer = initializePeer(user, iceServers);
+      if (!peer) return;
+
       try {
         streamRef = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         console.log('[RoomPage] Media stream acquired.');
       } catch (err) {
-        // ✨ [수정 시작] NotFoundError일 경우, error가 아닌 info log로 처리합니다.
         if (err.name === 'NotFoundError') {
-          console.log('[RoomPage] Media device not found. Creating dummy stream for spectator mode.');
+          console.log('[RoomPage] Media device not found, creating dummy stream.');
           showToast('카메라/마이크를 찾을 수 없습니다. 관전자 모드로 참여합니다.', 'info');
         } else {
           console.error("[RoomPage] getUserMedia error:", err);
           showToast('카메라/마이크 접근에 실패했습니다.', 'error');
         }
         streamRef = createDummyStream();
-        // ✨ [수정 끝]
       }
       setMyStream(streamRef);
 
-      // 3. Realtime Database에 사용자 정보 등록
-      const currentUserRef = ref(database, `rooms/${roomId}/users/${user.uid}`);
       set(currentUserRef, {
-        displayName: user.displayName,
-        photoURL: user.photoURL,
-        email: user.email,
+        displayName: user.displayName, photoURL: user.photoURL, email: user.email,
         joinTime: rtdbServerTimestamp()
       });
       onDisconnect(currentUserRef).remove();
+
+      roomUsersListener = onValue(roomUsersRef, (snapshot) => {
+        const usersInRoom = snapshot.val();
+        if (usersInRoom && !callStartTimeRef.current) callStartTimeRef.current = Date.now();
+        if (!usersInRoom) { executeLeaveRoom(); return; }
+
+        const otherUserId = Object.keys(usersInRoom).find(uid => uid !== user.uid);
+        if (otherUserId) {
+            const partnerInfo = { uid: otherUserId, ...usersInRoom[otherUserId] };
+            setOtherUser(partnerInfo);
+            callPartnerRef.current = partnerInfo;
+        } else {
+            setOtherUser(null);
+            callPartnerRef.current = null;
+            if (callStartTimeRef.current) executeLeaveRoom();
+        }
+      });
     };
 
-    if(iceServers.length > 0) {
-      setup();
-    }
+    setup();
 
     return () => {
+      console.log('[Cleanup] Leaving room component.');
       if (streamRef) {
-        console.log('[Cleanup] Stopping media tracks.');
         streamRef.getTracks().forEach(track => track.stop());
       }
+      if (roomUsersListener) {
+        off(roomUsersRef, 'value', roomUsersListener);
+      }
+      remove(currentUserRef);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthLoading, user, roomId, iceServers]);
+  }, [isAuthLoading, user, roomId]);
 
   useEffect(() => {
     const handleBeforeUnload = () => destroyPeer();
@@ -153,60 +161,31 @@ export default function Room() {
   }, []);
   
   useEffect(() => {
-    const roomUsersRef = ref(database, `rooms/${roomId}/users`);
-    const listener = onValue(roomUsersRef, (snapshot) => {
-        const usersInRoom = snapshot.val();
-        if (usersInRoom && !callStartTimeRef.current) callStartTimeRef.current = Date.now();
-        if (!usersInRoom && callStarted) { executeLeaveRoom(); return; }
-
-        if (usersInRoom) {
-            const otherUserId = Object.keys(usersInRoom).find(uid => uid !== user?.uid);
-            if (otherUserId) {
-                const partnerInfo = { uid: otherUserId, ...usersInRoom[otherUserId] };
-                setOtherUser(partnerInfo);
-                callPartnerRef.current = partnerInfo;
-                if (!callStarted) setCallStarted(true);
-            } else {
-                setOtherUser(null);
-                callPartnerRef.current = null;
-                if (callStarted) executeLeaveRoom();
-            }
-        }
-    });
-
-    return () => off(roomUsersRef, 'value', listener);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, roomId, callStarted]);
-
-  useEffect(() => {
     if (myStream && userVideo.current) {
       userVideo.current.srcObject = myStream;
     }
   }, [myStream]);
   
   useEffect(() => {
-    if (peerRef.current && myStream && otherUser && !peers[otherUser.uid] && !isCreator && user.uid > otherUser.uid) {
+    if (myStream && otherUser && !peers[otherUser.uid] && !isCreator && user && user.uid > otherUser.uid) {
         console.log(`[RoomPage] My UID is greater. Attempting to call ${otherUser.uid}`);
         callPeer(otherUser.uid);
     }
   }, [myStream, otherUser, peers, callPeer, isCreator, user]);
   
-  const executeLeaveRoom = () => {
+  const executeLeaveRoom = useCallback(() => {
     if (callEndedRef.current) return;
     callEndedRef.current = true;
-    if (backPressState.current.timeoutId) clearTimeout(backPressState.current.timeoutId);
-    window.onpopstate = null; 
+    
     const partnerInfo = callPartnerRef.current;
-
     if (!isCreator && partnerInfo) {
       openRatingModal({ 
         creatorId: partnerInfo.uid, 
         creatorName: partnerInfo.displayName 
       });
     }
-    
     router.replace('/');
-  };
+  }, [isCreator, router, openRatingModal]);
   
   const handleLeaveRoom = () => {
     if (!callStartTimeRef.current) {
@@ -219,24 +198,25 @@ export default function Room() {
   };
   
   useEffect(() => {
+    const backPressState = { pressedOnce: false, timeoutId: null };
     history.pushState(null, '', location.href);
     const handlePopState = () => {
       history.pushState(null, '', location.href);
-      if (backPressState.current.pressedOnce) {
-        if (backPressState.current.timeoutId) clearTimeout(backPressState.current.timeoutId);
+      if (backPressState.pressedOnce) {
+        if (backPressState.timeoutId) clearTimeout(backPressState.timeoutId);
         handleLeaveRoom();
       } else {
-        backPressState.current.pressedOnce = true;
+        backPressState.pressedOnce = true;
         showToast('한 번 더 누르면 통화가 종료됩니다.', 'info');
-        backPressState.current.timeoutId = setTimeout(() => {
-          backPressState.current.pressedOnce = false;
+        backPressState.timeoutId = setTimeout(() => {
+          backPressState.pressedOnce = false;
         }, 2000);
       }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showToast]);
+  }, []);
 
   const handleSendGift = async (gift) => {
     if (!user || !otherUser) return;
@@ -268,9 +248,7 @@ export default function Room() {
       <header className={styles.header}>
         <h1 className={styles.roomInfo}>Room: <span className={styles.roomId}>{roomId}</span></h1>
         {remotePeerEntry && <CallQualityIndicator quality={callQuality} />}
-        <button onClick={handleLeaveRoom} className={styles.exitButton}>
-          Leave Room
-        </button>
+        <button onClick={handleLeaveRoom} className={styles.exitButton}>Leave Room</button>
       </header>
       <main className={styles.main}>
         {myStream ? (

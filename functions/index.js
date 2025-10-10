@@ -20,27 +20,27 @@ exports.syncCreatorToRealtimeDB = functions.firestore
     const { userId } = context.params;
     const creatorRef = realtimeDb.ref(`creators/${userId}`);
 
-    if (!change.after.exists) {
-      functions.logger.log(`User ${userId} deleted, removing from RTDB.`);
+    // 사용자가 삭제되었거나 더 이상 크리에이터가 아니면 RTDB에서 삭제합니다.
+    if (!change.after.exists || !change.after.data().isCreator) {
+      functions.logger.log(`User ${userId} is deleted or no longer a creator, removing from RTDB.`);
       return creatorRef.remove();
     }
 
     const userData = change.after.data();
+    const rtdbSnapshot = await creatorRef.once('value');
 
-    if (userData.isCreator) {
-      functions.logger.log(`Syncing creator ${userId} to RTDB.`);
-      const snapshot = await creatorRef.child("status").once("value");
-      const status = snapshot.val() || "offline";
-
-      return creatorRef.set({
-        uid: userId,
+    // RTDB에 크리에이터 노드가 존재할 때만 (즉, 온라인 상태일 때만) 메타데이터를 업데이트합니다.
+    // 이렇게 하면 오프라인 상태일 때 함수가 트리거되어도 'offline' 유저가 다시 생성되지 않습니다.
+    if (rtdbSnapshot.exists()) {
+      functions.logger.log(`Syncing metadata for online creator ${userId}.`);
+      // 상태(status) 필드는 건드리지 않고, 변경될 수 있는 정보만 업데이트합니다.
+      return creatorRef.update({
         displayName: userData.displayName,
         photoURL: userData.photoURL,
-        status: status,
       });
     } else {
-      functions.logger.log(`User ${userId} is not a creator, ensuring removal from RTDB.`);
-      return creatorRef.remove();
+      functions.logger.log(`Creator ${userId} is offline, skipping metadata sync.`);
+      return null; // 아무 작업도 하지 않음
     }
   });
 

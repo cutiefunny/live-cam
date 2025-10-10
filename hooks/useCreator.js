@@ -1,7 +1,6 @@
 // hooks/useCreator.js
 'use client';
 import { useState, useEffect } from 'react';
-// ✨ [수정] 'off' 함수를 import 목록에 추가합니다.
 import { ref, onDisconnect, remove, onValue, get, set, off } from 'firebase/database';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -15,10 +14,8 @@ export function useCreator() {
   const [isOnline, setIsOnline] = useState(false);
 
   useEffect(() => {
+    // 이 useEffect는 온라인 상태일 때의 로직만 처리합니다.
     if (!user || !isUserRoleCreator || !isOnline) {
-      if (user) {
-        remove(ref(database, `creators/${user.uid}`));
-      }
       return;
     }
 
@@ -27,7 +24,9 @@ export function useCreator() {
 
     const listener = onValue(connectedRef, (snap) => {
       if (snap.val() === true) {
+        // 비정상적인 연결 종료 시 RTDB에서 데이터를 삭제합니다.
         onDisconnect(creatorRef).remove();
+        // 온라인 상태로 설정합니다.
         set(creatorRef, {
           uid: user.uid,
           displayName: user.displayName,
@@ -37,12 +36,15 @@ export function useCreator() {
       }
     });
 
+    // 컴포넌트 언마운트 또는 isOnline이 false가 될 때 실행되는 클린업 함수
     return () => {
       off(connectedRef, 'value', listener);
+      // 안전장치로, 여기서도 데이터를 삭제합니다.
       remove(creatorRef);
     };
   }, [user, isUserRoleCreator, isOnline]);
   
+  // 컴포넌트 마운트 시 초기 온라인 상태를 확인합니다.
   useEffect(() => {
     if (user && isUserRoleCreator) {
       const creatorRef = ref(database, `creators/${user.uid}`);
@@ -55,7 +57,15 @@ export function useCreator() {
   }, [user, isUserRoleCreator]);
 
   const goOnline = () => setIsOnline(true);
-  const goOffline = () => setIsOnline(false);
+  
+  // ✨ [수정] goOffline 함수가 명시적으로 데이터를 삭제하도록 변경
+  const goOffline = () => {
+    if (user) {
+      const creatorRef = ref(database, `creators/${user.uid}`);
+      remove(creatorRef);
+    }
+    setIsOnline(false); // 로컬 상태도 업데이트
+  };
 
   const uploadCreatorPhotos = async (files) => {
     if (!user) throw new Error("User not logged in");
