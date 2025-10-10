@@ -8,14 +8,37 @@ import CallQualityIndicator from '@/components/CallQualityIndicator';
 import GiftModal from '@/components/GiftModal';
 import LeaveConfirmModal from '@/components/LeaveConfirmModal';
 import { useCoin } from '@/hooks/useCoin';
-import { useWebRTC } from '@/hooks/useWebRTC';
+import { useWebRTC, initializePeer, destroyPeer } from '@/hooks/useWebRTC';
 import { useSettings } from '@/hooks/useSettings';
 import { useCallQuality } from '@/hooks/useCallQuality';
 import useAppStore from '@/store/useAppStore';
 import styles from './Room.module.css';
-// ✨ [수정] 'serverTimestamp'를 RTDB에서 가져옵니다.
 import { ref, onValue, off, remove, set, get, onDisconnect, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
-import { database, firestore } from '@/lib/firebase';
+import { database } from '@/lib/firebase';
+
+const createDummyStream = () => {
+  console.log('[DummyStream] Creating dummy stream for spectator mode.');
+  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  const oscillator = audioContext.createOscillator();
+  const dst = oscillator.connect(audioContext.createMediaStreamDestination());
+  oscillator.start();
+  const audioTrack = dst.stream.getAudioTracks()[0];
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1;
+  canvas.height = 1;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, 1, 1);
+  }
+  const videoStream = canvas.captureStream();
+  const videoTrack = videoStream.getVideoTracks()[0];
+
+  const dummyStream = new MediaStream([audioTrack, videoTrack]);
+  dummyStream.getAudioTracks().forEach(track => track.enabled = false);
+  return dummyStream;
+};
 
 
 export default function Room() {
@@ -23,17 +46,17 @@ export default function Room() {
   const router = useRouter();
   const { sendGift } = useCoin();
   
-  const user = useAppStore((state) => state.user);
-  const isAuthLoading = useAppStore((state) => state.isAuthLoading);
-  const isCreator = useAppStore((state) => state.isCreator);
-  const giftAnimation = useAppStore((state) => state.giftAnimation);
-  const setGiftAnimation = useAppStore((state) => state.setGiftAnimation);
-  const showToast = useAppStore((state) => state.showToast);
+  const { 
+    user, isAuthLoading, isCreator, giftAnimation, setGiftAnimation, 
+    showToast, openRatingModal 
+  } = useAppStore();
 
   const { settings, isLoading: isSettingsLoading } = useSettings();
   const userVideo = useRef();
   
-  const { peer, myStream, peers, callPeer, setMyStream } = useWebRTC(user, roomId);
+  const { peer, myStream, peers, callPeer, setMyStream } = useWebRTC();
+  const [iceServers, setIceServers] = useState([]);
+  const peerRef = useRef(null);
   
   const [otherUser, setOtherUser] = useState(null);
   const [isGiftModalOpen, setIsGiftModalOpen] = useState(false);
@@ -49,35 +72,95 @@ export default function Room() {
   const remotePeerEntry = otherUser ? peers[otherUser.uid] : null;
   const callQuality = useCallQuality(remotePeerEntry?.call);
   const [callStarted, setCallStarted] = useState(false);
+  
+  useEffect(() => {
+    fetch('/api/turn')
+      .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch'))
+      .then(data => setIceServers(data.iceServers))
+      .catch(err => {
+        console.error("[WebRTC] Could not fetch ICE servers.", err);
+        showToast('TURN 서버 연결에 실패했습니다.', 'warn');
+        setIceServers([
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+        ]);
+      });
+  }, [showToast]);
 
   useEffect(() => {
-    if (!user || !roomId) return;
-    
-    const currentUserRef = ref(database, `rooms/${roomId}/users/${user.uid}`);
-    set(currentUserRef, {
-      displayName: user.displayName,
-      photoURL: user.photoURL,
-      email: user.email,
-      // ✨ [추가] 서버에서 통화 시작 시간을 기록할 수 있도록 joinTime을 설정합니다.
-      joinTime: rtdbServerTimestamp()
-    });
-    onDisconnect(currentUserRef).remove();
+    if (isAuthLoading || !user) {
+      if (!isAuthLoading) router.push('/');
+      return;
+    }
 
+    let streamRef = null;
+
+    const setup = async () => {
+      // 1. Peer 객체 초기화 (ICE 서버 정보가 준비된 후에)
+      if (iceServers.length > 0) {
+        peerRef.current = initializePeer(user, iceServers);
+      }
+
+      // 2. 미디어 스트림 가져오기 또는 더미 스트림 생성
+      try {
+        streamRef = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        console.log('[RoomPage] Media stream acquired.');
+      } catch (err) {
+        // ✨ [수정 시작] NotFoundError일 경우, error가 아닌 info log로 처리합니다.
+        if (err.name === 'NotFoundError') {
+          console.log('[RoomPage] Media device not found. Creating dummy stream for spectator mode.');
+          showToast('카메라/마이크를 찾을 수 없습니다. 관전자 모드로 참여합니다.', 'info');
+        } else {
+          console.error("[RoomPage] getUserMedia error:", err);
+          showToast('카메라/마이크 접근에 실패했습니다.', 'error');
+        }
+        streamRef = createDummyStream();
+        // ✨ [수정 끝]
+      }
+      setMyStream(streamRef);
+
+      // 3. Realtime Database에 사용자 정보 등록
+      const currentUserRef = ref(database, `rooms/${roomId}/users/${user.uid}`);
+      set(currentUserRef, {
+        displayName: user.displayName,
+        photoURL: user.photoURL,
+        email: user.email,
+        joinTime: rtdbServerTimestamp()
+      });
+      onDisconnect(currentUserRef).remove();
+    };
+
+    if(iceServers.length > 0) {
+      setup();
+    }
+
+    return () => {
+      if (streamRef) {
+        console.log('[Cleanup] Stopping media tracks.');
+        streamRef.getTracks().forEach(track => track.stop());
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthLoading, user, roomId, iceServers]);
+
+  useEffect(() => {
+    const handleBeforeUnload = () => destroyPeer();
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      destroyPeer();
+    };
+  }, []);
+  
+  useEffect(() => {
     const roomUsersRef = ref(database, `rooms/${roomId}/users`);
     const listener = onValue(roomUsersRef, (snapshot) => {
         const usersInRoom = snapshot.val();
-
-        if (usersInRoom && !callStartTimeRef.current) {
-          callStartTimeRef.current = Date.now();
-        }
-
-        if (!usersInRoom && callStarted) {
-            executeLeaveRoom();
-            return;
-        }
+        if (usersInRoom && !callStartTimeRef.current) callStartTimeRef.current = Date.now();
+        if (!usersInRoom && callStarted) { executeLeaveRoom(); return; }
 
         if (usersInRoom) {
-            const otherUserId = Object.keys(usersInRoom).find(uid => uid !== user.uid);
+            const otherUserId = Object.keys(usersInRoom).find(uid => uid !== user?.uid);
             if (otherUserId) {
                 const partnerInfo = { uid: otherUserId, ...usersInRoom[otherUserId] };
                 setOtherUser(partnerInfo);
@@ -86,56 +169,14 @@ export default function Room() {
             } else {
                 setOtherUser(null);
                 callPartnerRef.current = null;
-                if (callStarted) {
-                    executeLeaveRoom();
-                }
+                if (callStarted) executeLeaveRoom();
             }
         }
     });
 
-    return () => {
-      off(roomUsersRef, 'value', listener);
-      remove(currentUserRef).then(() => {
-        get(roomUsersRef).then((snapshot) => {
-            if (!snapshot.exists()) {
-                remove(ref(database, `rooms/${roomId}`));
-            }
-        });
-      });
-    };
-  }, [user, roomId, callStarted]); // ✨ 의존성 배열 단순화
-
-  useEffect(() => {
-    if (isAuthLoading || !user) {
-      if (!isAuthLoading) router.push('/');
-      return;
-    }
-  
-    let streamRef = null;
-    let isEffectActive = true;
-  
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-      .then(stream => {
-        if (isEffectActive) {
-          streamRef = stream;
-          setMyStream(stream);
-        }
-      })
-      .catch(err => {
-        if (isEffectActive) {
-          console.error("[RoomPage] getUserMedia error.", err);
-          showToast('카메라/마이크 접근에 실패했습니다. 관전자 모드로 참여합니다.', 'error');
-        }
-      });
-  
-    return () => {
-      isEffectActive = false;
-      if (streamRef) {
-        console.log('[Cleanup] Stopping media tracks.');
-        streamRef.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, [isAuthLoading, user, router, setMyStream, showToast]);
+    return () => off(roomUsersRef, 'value', listener);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, roomId, callStarted]);
 
   useEffect(() => {
     if (myStream && userVideo.current) {
@@ -144,14 +185,11 @@ export default function Room() {
   }, [myStream]);
   
   useEffect(() => {
-    if (peer && myStream && otherUser && !peers[otherUser.uid] && !isCreator) {
-        console.log(`[RoomPage] Attempting to call ${otherUser.uid}`);
+    if (peerRef.current && myStream && otherUser && !peers[otherUser.uid] && !isCreator && user.uid > otherUser.uid) {
+        console.log(`[RoomPage] My UID is greater. Attempting to call ${otherUser.uid}`);
         callPeer(otherUser.uid);
     }
-  }, [peer, myStream, otherUser, peers, callPeer, isCreator]);
-
-  // ✨ [제거] 클라이언트 측 코인 차감 및 통화 기록 로직을 모두 제거합니다.
-  // 이 로직은 이제 위에서 추가한 `finalizeCall` Firebase Function이 처리합니다.
+  }, [myStream, otherUser, peers, callPeer, isCreator, user]);
   
   const executeLeaveRoom = () => {
     if (callEndedRef.current) return;
@@ -159,22 +197,23 @@ export default function Room() {
     if (backPressState.current.timeoutId) clearTimeout(backPressState.current.timeoutId);
     window.onpopstate = null; 
     const partnerInfo = callPartnerRef.current;
+
     if (!isCreator && partnerInfo) {
-      const query = `?callEnded=true&creatorId=${partnerInfo.uid}&creatorName=${partnerInfo.displayName}`;
-      router.replace(`/${query}`);
-    } else {
-      router.replace('/');
+      openRatingModal({ 
+        creatorId: partnerInfo.uid, 
+        creatorName: partnerInfo.displayName 
+      });
     }
+    
+    router.replace('/');
   };
   
   const handleLeaveRoom = () => {
-    // ✨ [수정] 통화 종료 시, 서버가 정산할 것이므로 클라이언트에서는 간단한 정보만 표시합니다.
     if (!callStartTimeRef.current) {
         executeLeaveRoom();
         return;
     }
     const duration = Date.now() - callStartTimeRef.current;
-    // 코인 정보는 더 이상 계산하지 않고, 통화 시간만 전달합니다.
     setLeaveDetails({ duration });
     setIsLeaveModalOpen(true);
   };
@@ -198,13 +237,6 @@ export default function Room() {
     return () => window.removeEventListener('popstate', handlePopState);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showToast]);
-
-  useEffect(() => {
-    if (giftAnimation) {
-      const timer = setTimeout(() => setGiftAnimation(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [giftAnimation, setGiftAnimation]);
 
   const handleSendGift = async (gift) => {
     if (!user || !otherUser) return;
@@ -250,7 +282,7 @@ export default function Room() {
             </div>
         ) : (
           <div className={styles.spectatorPip}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={styles.spectatorIcon}><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={styles.spectatorIcon}><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
             <p>Spectator Mode</p>
           </div>
         )}
