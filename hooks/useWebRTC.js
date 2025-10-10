@@ -5,14 +5,15 @@ import Peer from 'peerjs';
 import useAppStore from '@/store/useAppStore';
 
 export function useWebRTC(localStream) {
-  const { user, showToast } = useAppStore();
+  const user = useAppStore((state) => state.user);
   const [peer, setPeer] = useState(null);
   const [connections, setConnections] = useState({});
   const [remoteStreams, setRemoteStreams] = useState({});
   const peerInstance = useRef(null);
 
   useEffect(() => {
-    if (!user || !localStream) return;
+    // ✨ [수정] user나 localStream이 없거나, 이미 Peer 인스턴스가 존재하면 재초기화하지 않도록 방지
+    if (!user || !localStream || peerInstance.current) return;
 
     const initializePeer = async () => {
       try {
@@ -37,7 +38,8 @@ export function useWebRTC(localStream) {
 
         newPeer.on('error', (err) => {
           console.error('[useWebRTC] PeerJS error:', err);
-          showToast(`WebRTC 오류: ${err.type}`, 'error');
+          // ✨ [수정] 의존성을 없애기 위해 스토어의 getState를 직접 사용
+          useAppStore.getState().showToast(`WebRTC 오류: ${err.type}`, 'error');
         });
 
         newPeer.on('disconnected', () => {
@@ -47,13 +49,11 @@ export function useWebRTC(localStream) {
         
       } catch (error) {
         console.error("Failed to initialize Peer:", error);
-        showToast('WebRTC 초기화에 실패했습니다.', 'error');
+        useAppStore.getState().showToast('WebRTC 초기화에 실패했습니다.', 'error');
       }
     };
 
-    if (!peerInstance.current) {
-      initializePeer();
-    }
+    initializePeer();
     
     return () => {
       if (peerInstance.current) {
@@ -63,12 +63,19 @@ export function useWebRTC(localStream) {
         console.log('[useWebRTC] Peer instance destroyed.');
       }
     };
-  }, [user, localStream, showToast]);
+  // ✨ [수정] 의존성 배열에서 showToast 제거
+  }, [user, localStream]);
   
   const setupCallListeners = useCallback((call) => {
     call.on('stream', (remoteStream) => {
       console.log(`[useWebRTC] Received remote stream from ${call.peer}`);
-      setRemoteStreams(prev => ({ ...prev, [call.peer]: remoteStream }));
+      // ✨ [수정] 중복 스트림 이벤트 방지
+      setRemoteStreams(prev => {
+        if (prev[call.peer] && prev[call.peer].id === remoteStream.id) {
+          return prev;
+        }
+        return { ...prev, [call.peer]: remoteStream };
+      });
     });
 
     call.on('close', () => {
