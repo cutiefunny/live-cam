@@ -25,8 +25,7 @@ const createDummyStream = () => {
   const audioTrack = dst.stream.getAudioTracks()[0];
 
   const canvas = document.createElement('canvas');
-  canvas.width = 1;
-  canvas.height = 1;
+  canvas.width = 1; canvas.height = 1;
   const ctx = canvas.getContext('2d');
   if (ctx) {
     ctx.fillStyle = 'black';
@@ -39,7 +38,6 @@ const createDummyStream = () => {
   dummyStream.getAudioTracks().forEach(track => track.enabled = false);
   return dummyStream;
 };
-
 
 export default function Room() {
   const { roomId } = useParams();
@@ -68,6 +66,7 @@ export default function Room() {
   const remotePeerEntry = otherUser ? peers[otherUser.uid] : null;
   const callQuality = useCallQuality(remotePeerEntry?.call);
   
+  // ✨ [수정] WebRTC 및 RealtimeDB 초기화 로직을 하나의 useEffect로 통합하고 안정화
   useEffect(() => {
     if (isAuthLoading) return;
     if (!user) {
@@ -76,12 +75,12 @@ export default function Room() {
     }
 
     let streamRef = null;
-    let peer = null;
     const currentUserRef = ref(database, `rooms/${roomId}/users/${user.uid}`);
     const roomUsersRef = ref(database, `rooms/${roomId}/users`);
     let roomUsersListener = null;
 
     const setup = async () => {
+      // 1. ICE 서버 가져오기
       const iceServers = await fetch('/api/turn')
         .then(res => {
           if (!res.ok) throw new Error('Failed to fetch ICE servers');
@@ -94,9 +93,10 @@ export default function Room() {
           return [{ urls: 'stun:stun.l.google.com:19302' }];
         });
 
-      peer = initializePeer(user, iceServers);
-      if (!peer) return;
+      // 2. Peer 객체 초기화
+      initializePeer(user, iceServers);
 
+      // 3. 미디어 스트림 획득 또는 더미 스트림 생성
       try {
         streamRef = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         console.log('[RoomPage] Media stream acquired.');
@@ -112,6 +112,7 @@ export default function Room() {
       }
       setMyStream(streamRef);
 
+      // 4. Realtime Database 사용자 등록 및 리스너 연결
       set(currentUserRef, {
         displayName: user.displayName, photoURL: user.photoURL, email: user.email,
         joinTime: rtdbServerTimestamp()
@@ -139,7 +140,7 @@ export default function Room() {
     setup();
 
     return () => {
-      console.log('[Cleanup] Leaving room component.');
+      console.log('[Cleanup] Room component unmounting...');
       if (streamRef) {
         streamRef.getTracks().forEach(track => track.stop());
       }
@@ -151,11 +152,13 @@ export default function Room() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthLoading, user, roomId]);
 
+  // ✨ [추가] 브라우저를 떠날 때 Peer 객체를 파괴하는 별도의 useEffect
   useEffect(() => {
     const handleBeforeUnload = () => destroyPeer();
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      // 이 컴포넌트가 사라질 때 (예: 페이지 이동) Peer 객체를 파괴합니다.
       destroyPeer();
     };
   }, []);
@@ -228,22 +231,13 @@ export default function Room() {
   };
   
   if (isAuthLoading || isSettingsLoading || !user) {
-    return (
-      <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh'}}>
-          <div style={{fontSize: '1.25rem'}}>Connecting...</div>
-      </div>
-    );
+    return <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh'}}><div style={{fontSize: '1.25rem'}}>Connecting...</div></div>;
   }
   
   return (
     <div className={styles.container}>
       {giftAnimation && (
-        <div className={styles.giftAnimationOverlay}>
-          <div className={styles.giftAnimationContent}>
-            <span className={styles.giftIcon}>{giftAnimation.icon}</span>
-            <p>{giftAnimation.senderName}님이 {giftAnimation.name} 선물을 보냈습니다!</p>
-          </div>
-        </div>
+        <div className={styles.giftAnimationOverlay}><div className={styles.giftAnimationContent}><span className={styles.giftIcon}>{giftAnimation.icon}</span><p>{giftAnimation.senderName}님이 {giftAnimation.name} 선물을 보냈습니다!</p></div></div>
       )}
       <header className={styles.header}>
         <h1 className={styles.roomInfo}>Room: <span className={styles.roomId}>{roomId}</span></h1>
@@ -252,55 +246,24 @@ export default function Room() {
       </header>
       <main className={styles.main}>
         {myStream ? (
-            <div className={styles.myVideoContainer}>
-                <video muted ref={userVideo} autoPlay playsInline className={styles.video} />
-                <div className={styles.displayName}>
-                  {user.displayName} (You)
-                </div>
-            </div>
+            <div className={styles.myVideoContainer}><video muted ref={userVideo} autoPlay playsInline className={styles.video} /><div className={styles.displayName}>{user.displayName} (You)</div></div>
         ) : (
-          <div className={styles.spectatorPip}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={styles.spectatorIcon}><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-            <p>Spectator Mode</p>
-          </div>
+          <div className={styles.spectatorPip}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={styles.spectatorIcon}><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg><p>Spectator Mode</p></div>
         )}
         {remotePeerEntry && otherUser ? (
-          <div className={styles.remoteVideoContainer}>
-            <Video 
-              key={remotePeerEntry.call.peer}
-              stream={remotePeerEntry.remoteStream} 
-              photoURL={otherUser.photoURL} 
-              displayName={otherUser.displayName} 
-            />
-          </div>
+          <div className={styles.remoteVideoContainer}><Video key={remotePeerEntry.call.peer} stream={remotePeerEntry.remoteStream} photoURL={otherUser.photoURL} displayName={otherUser.displayName} /></div>
         ) : (
-          <div className={styles.waitingMessage}>
-            <h2>Waiting for other participant...</h2>
-          </div>
+          <div className={styles.waitingMessage}><h2>Waiting for other participant...</h2></div>
         )}
       </main>
       {myStream && (
         <footer className={styles.footer}>
           <Controls stream={myStream} />
-          {!isCreator && otherUser && (
-            <button onClick={() => setIsGiftModalOpen(true)} className={styles.giftButton}>
-              🎁
-            </button>
-          )}
+          {!isCreator && otherUser && (<button onClick={() => setIsGiftModalOpen(true)} className={styles.giftButton}>🎁</button>)}
         </footer>
       )}
-      {isGiftModalOpen && (
-        <GiftModal
-          onClose={() => setIsGiftModalOpen(false)}
-          onSendGift={handleSendGift}
-        />
-      )}
-      <LeaveConfirmModal
-        show={isLeaveModalOpen}
-        onConfirm={executeLeaveRoom}
-        onCancel={() => setIsLeaveModalOpen(false)}
-        details={leaveDetails}
-      />
+      {isGiftModalOpen && (<GiftModal onClose={() => setIsGiftModalOpen(false)} onSendGift={handleSendGift}/>)}
+      <LeaveConfirmModal show={isLeaveModalOpen} onConfirm={executeLeaveRoom} onCancel={() => setIsLeaveModalOpen(false)} details={leaveDetails}/>
     </div>
   );
 }

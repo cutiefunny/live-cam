@@ -1,12 +1,13 @@
 // hooks/useWebRTC.js
 'use client';
-// ✨ [수정] useCallback을 import 합니다.
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Peer from 'peerjs';
 import useAppStore from '@/store/useAppStore';
 
+// ✨ [수정] Peer 인스턴스를 저장하고 관리할 전역 변수 (싱글톤)
 let peerInstance = null;
 
+// ✨ [추가] Peer 인스턴스를 생성하거나 가져오는 싱글톤 함수
 export const initializePeer = (user, iceServers) => {
   if (peerInstance && !peerInstance.destroyed) {
     console.log('[WebRTC] Returning existing global Peer instance.');
@@ -23,6 +24,7 @@ export const initializePeer = (user, iceServers) => {
   return peerInstance;
 };
 
+// ✨ [추가] Peer 인스턴스를 안전하게 파괴하는 함수
 export const destroyPeer = () => {
   if (peerInstance && !peerInstance.destroyed) {
     console.log('[WebRTC] Destroying global Peer instance.');
@@ -37,13 +39,13 @@ export function useWebRTC() {
   const [peers, setPeers] = useState({});
   const { showToast } = useAppStore();
 
-  // ✨ [수정] setMyStream 함수를 useCallback으로 감싸서 안정적인 함수로 만듭니다.
   const setMyStream = useCallback((stream) => {
     myStreamRef.current = stream;
     _setMyStream(stream);
-  }, []); // 의존성 배열이 비어있으므로 이 함수는 절대로 재생성되지 않습니다.
+  }, []);
 
   useEffect(() => {
+    // ✨ [수정] 이 훅은 더 이상 Peer 객체를 직접 관리하지 않고, 이벤트 리스너만 담당합니다.
     if (!peerInstance) {
       console.warn('[useWebRTC] Peer instance is not initialized yet.');
       return;
@@ -82,7 +84,7 @@ export function useWebRTC() {
 
     return () => {
       console.log('[useWebRTC] Cleaning up event listeners.');
-      if (peerInstance) {
+      if (peerInstance && !peerInstance.destroyed) {
         peerInstance.off('call', handleCall);
         peerInstance.off('error', handleError);
       }
