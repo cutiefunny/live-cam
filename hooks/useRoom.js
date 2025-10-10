@@ -10,7 +10,8 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
   const callStateRef = useRef({});
   const coinDeductionIntervalsRef = useRef({});
   const isCreatorRef = useRef(isCreator);
-  const { setGiftAnimation } = useAppStore();
+  // ✨ [수정] showToast 함수를 스토어에서 가져옵니다.
+  const { setGiftAnimation, showToast } = useAppStore();
 
   useEffect(() => {
     isCreatorRef.current = isCreator;
@@ -45,12 +46,16 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
     const handleGift = (snapshot) => {
         const giftData = snapshot.val();
         setGiftAnimation(giftData);
+
+        // ✨ [수정 시작] 현재 사용자가 선물을 받은 사람인지 확인하고 토스트 알림을 띄웁니다.
+        if (user && giftData.senderId !== user.uid) {
+            showToast(`${giftData.senderName}님에게 ${giftData.name} 선물을 받았습니다!`, 'success');
+        }
+        // ✨ [수정 끝]
+
         remove(snapshot.ref);
     };
 
-    // ✨ [제거] Firestore로 통합되었으므로 중복되는 로직을 제거합니다.
-    
-    // ✨ [추가] peer의 remoteStream을 상태에 업데이트하는 함수
     const updatePeerStream = (peerID, stream) => {
       setPeers(currentPeers =>
         currentPeers.map(p =>
@@ -60,7 +65,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
     };
 
     const setupPeerListeners = (peer, peerID, peerData) => {
-      // ✨ [추가] 스트림 이벤트 리스너를 여기서 바로 등록
       peer.on('stream', (stream) => {
         console.log(`[Room] Received stream from ${peerID}`);
         updatePeerStream(peerID, stream);
@@ -72,8 +76,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
             startTime: Date.now(),
             peerData: peerData
         };
-
-        // ✨ [제거] 코인 차감 로직은 page.js로 통합되었습니다.
       });
 
       peer.on('close', () => {
@@ -84,7 +86,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
           delete coinDeductionIntervalsRef.current[peerID];
         }
         
-        // ✨ [제거] 통화 기록 저장은 page.js로 통합되었습니다.
         if (callStateRef.current[peerID]) {
             delete callStateRef.current[peerID];
         }
@@ -102,7 +103,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
           setupPeerListeners(peer, otherUserId, userData);
           setPeers(currentPeers => {
             if (currentPeers.some(p => p.peerID === otherUserId)) return currentPeers;
-            // ✨ [수정] remoteStream 속성을 null로 초기화하여 추가
             return [...currentPeers, { peerID: otherUserId, peer, remoteStream: null, ...userData }];
           });
         }
@@ -126,7 +126,6 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
             setupPeerListeners(peer, senderId, peerData);
             setPeers(currentPeers => {
               if (currentPeers.some(p => p.peerID === senderId)) return currentPeers;
-              // ✨ [수정] remoteStream 속성을 null로 초기화하여 추가
               return [...currentPeers, { peerID: senderId, peer, remoteStream: null, ...peerData }];
             });
           }
@@ -182,7 +181,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
         });
       }, 5000); 
     };
-  }, [roomID, user, localStream, createPeer, addPeer, iceServersReady, settings, isCreator, setGiftAnimation]);
+  }, [roomID, user, localStream, createPeer, addPeer, iceServersReady, settings, isCreator, setGiftAnimation, showToast]);
   
   return { peers };
 }
