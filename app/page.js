@@ -1,7 +1,7 @@
 // app/page.js
 'use client';
 import { useState, useEffect, Suspense, useMemo } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { nanoid } from 'nanoid';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -39,27 +39,6 @@ const IncomingCallModal = ({ callRequest, onAccept, onDecline }) => {
     );
 };
 
-
-function RatingTrigger() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const { openRatingModal } = useAppStore();
-
-  useEffect(() => {
-    const callEnded = searchParams.get('callEnded');
-    const creatorId = searchParams.get('creatorId');
-    const creatorName = searchParams.get('creatorName');
-
-    if (callEnded === 'true' && creatorId && creatorName) {
-      openRatingModal({ creatorId, creatorName });
-      router.replace('/', { shallow: true });
-    }
-  }, [searchParams, openRatingModal, router]);
-
-  return null;
-}
-
-
 export default function Home() {
   const { signIn, signOut } = useAuth();
   const { updateUserProfile } = useUserProfile();
@@ -93,7 +72,7 @@ export default function Home() {
     const creatorsQuery = query(
       collection(firestore, 'users'),
       where('isCreator', '==', true),
-      limit(50) // 정렬은 제거하고 limit만 유지
+      limit(10) // 정렬은 제거하고 limit만 유지
     );
     
     const unsubscribeCreators = onSnapshot(creatorsQuery, (snapshot) => {
@@ -218,16 +197,13 @@ export default function Home() {
 
   return (
     <>
-      <Suspense fallback={<div>Loading...</div>}>
-        <RatingTrigger />
-      </Suspense>
-
       <Header 
         user={user} 
         userCoins={userCoins}
         onAvatarClick={openProfileModal}
         onCoinClick={openCoinModal}
       />
+
       <main className={styles.main}>
         {isCreator && (
             <div className={styles.creatorActions}>

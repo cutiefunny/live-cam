@@ -13,9 +13,9 @@ import { useSettings } from '@/hooks/useSettings';
 import { useCallQuality } from '@/hooks/useCallQuality';
 import useAppStore from '@/store/useAppStore';
 import styles from './Room.module.css';
-import { ref, onValue, off, remove, set, get, onDisconnect } from 'firebase/database';
-import { doc, runTransaction, addDoc, collection, serverTimestamp } from 'firebase/firestore'; // ✨ [추가]
-import { database, firestore } from '@/lib/firebase'; // ✨ [수정]
+// ✨ [수정] 'serverTimestamp'를 RTDB에서 가져옵니다.
+import { ref, onValue, off, remove, set, get, onDisconnect, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
+import { database, firestore } from '@/lib/firebase';
 
 
 export default function Room() {
@@ -37,7 +37,6 @@ export default function Room() {
   
   const [otherUser, setOtherUser] = useState(null);
   const [isGiftModalOpen, setIsGiftModalOpen] = useState(false);
-  const coinDeductionIntervalRef = useRef(null);
   
   const callEndedRef = useRef(false);
   const backPressState = useRef({ pressedOnce: false, timeoutId: null });
@@ -46,13 +45,11 @@ export default function Room() {
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
   const [leaveDetails, setLeaveDetails] = useState(null);
   const callStartTimeRef = useRef(null);
-  const minutesChargedRef = useRef(0);
 
   const remotePeerEntry = otherUser ? peers[otherUser.uid] : null;
   const callQuality = useCallQuality(remotePeerEntry?.call);
   const [callStarted, setCallStarted] = useState(false);
 
-  // ... (방 입장/퇴장 로직은 이전 답변과 동일) ...
   useEffect(() => {
     if (!user || !roomId) return;
     
@@ -60,13 +57,19 @@ export default function Room() {
     set(currentUserRef, {
       displayName: user.displayName,
       photoURL: user.photoURL,
-      email: user.email
+      email: user.email,
+      // ✨ [추가] 서버에서 통화 시작 시간을 기록할 수 있도록 joinTime을 설정합니다.
+      joinTime: rtdbServerTimestamp()
     });
     onDisconnect(currentUserRef).remove();
 
     const roomUsersRef = ref(database, `rooms/${roomId}/users`);
     const listener = onValue(roomUsersRef, (snapshot) => {
         const usersInRoom = snapshot.val();
+
+        if (usersInRoom && !callStartTimeRef.current) {
+          callStartTimeRef.current = Date.now();
+        }
 
         if (!usersInRoom && callStarted) {
             executeLeaveRoom();
@@ -100,9 +103,8 @@ export default function Room() {
         });
       });
     };
-  }, [user, roomId, callStarted]);
+  }, [user, roomId, callStarted]); // ✨ 의존성 배열 단순화
 
-  // ... (미디어 스트림 관련 로직은 이전 답변과 동일) ...
   useEffect(() => {
     if (isAuthLoading || !user) {
       if (!isAuthLoading) router.push('/');
@@ -148,101 +150,9 @@ export default function Room() {
     }
   }, [peer, myStream, otherUser, peers, callPeer, isCreator]);
 
-  // ✨ [수정] 코인 차감 및 통화 기록 로직 (Firestore 사용)
-  useEffect(() => {
-    if (!remotePeerEntry || !settings || isCreator || !user) {
-        if (remotePeerEntry === null) {
-            callStartTimeRef.current = null;
-            minutesChargedRef.current = 0;
-        }
-      return;
-    }
+  // ✨ [제거] 클라이언트 측 코인 차감 및 통화 기록 로직을 모두 제거합니다.
+  // 이 로직은 이제 위에서 추가한 `finalizeCall` Firebase Function이 처리합니다.
   
-    if (!callStartTimeRef.current) {
-      callStartTimeRef.current = Date.now();
-    }
-
-    const remotePeerId = remotePeerEntry.call.peer;
-    const partnerInfo = callPartnerRef.current;
-    if (!partnerInfo) return;
-
-    console.log(`[Coin] Call with ${remotePeerId} is active. Starting coin logic.`);
-    const startTime = callStartTimeRef.current;
-  
-    const { costToStart, costPerMinute } = settings;
-  
-    (async () => {
-      if (costToStart > 0) {
-        await deductCoin(user.uid, remotePeerId, costToStart, '통화 시작');
-      }
-    })();
-  
-    const intervalId = setInterval(() => {
-      deductCoin(user.uid, remotePeerId, costPerMinute, `Video call minute charge`);
-      minutesChargedRef.current += 1;
-    }, 60000);
-    coinDeductionIntervalRef.current = intervalId;
-  
-    return () => {
-      console.log(`[Coin] Call with ${remotePeerId} ended. Cleaning up.`);
-      clearInterval(coinDeductionIntervalRef.current);
-      coinDeductionIntervalRef.current = null;
-      
-      const duration = Date.now() - startTime;
-      
-      addDoc(collection(firestore, 'call_history'), {
-          callerId: user.uid, callerName: user.displayName,
-          calleeId: partnerInfo.uid, calleeName: partnerInfo.displayName,
-          roomId: roomId, timestamp: new Date(startTime), duration
-      });
-      console.log(`[History] Call record saved to Firestore. Duration: ${duration}ms`);
-    };
-  
-  }, [remotePeerEntry, settings, isCreator, user]);
-
-  const payoutToCreator = (creatorId, amount) => {
-    const creatorDocRef = doc(firestore, 'users', creatorId);
-    return runTransaction(firestore, async (transaction) => {
-        const creatorDoc = await transaction.get(creatorDocRef);
-        if (!creatorDoc.exists()) return;
-        const newCoins = (creatorDoc.data().coins || 0) + amount;
-        transaction.update(creatorDocRef, { coins: newCoins });
-    });
-  };
-  
-  const deductCoin = async (userId, peerId, amount, description) => {
-    const userDocRef = doc(firestore, 'users', userId);
-    try {
-        await runTransaction(firestore, async (transaction) => {
-            const userDoc = await transaction.get(userDocRef);
-            if (!userDoc.exists()) throw new Error("User document does not exist!");
-
-            const currentCoins = userDoc.data().coins || 0;
-            if (currentCoins < amount) {
-                throw new Error("Not enough coins");
-            }
-            transaction.update(userDocRef, { coins: currentCoins - amount });
-        });
-
-        if (description !== '통화 시작' && settings) {
-            const payoutAmount = Math.floor(amount * (settings.creatorShareRate / 100));
-            await payoutToCreator(peerId, payoutAmount);
-        }
-        
-        await addDoc(collection(firestore, 'coin_history'), {
-            userId, userEmail: user.email, userName: user.displayName, type: 'use', 
-            amount, timestamp: serverTimestamp(), description: `${description} (${peerId})`
-        });
-        return true;
-    } catch (error) {
-        console.error("Coin deduction failed:", error.message);
-        showToast(error.message === "Not enough coins" ? '코인이 부족하여 통화를 종료합니다.' : '코인 차감 오류', 'error');
-        executeLeaveRoom();
-        return false;
-    }
-  };
-  
-  // ... (방 나가기, 뒤로가기, 선물 관련 핸들러 및 useEffect는 이전 답변과 동일) ...
   const executeLeaveRoom = () => {
     if (callEndedRef.current) return;
     callEndedRef.current = true;
@@ -258,29 +168,14 @@ export default function Room() {
   };
   
   const handleLeaveRoom = () => {
+    // ✨ [수정] 통화 종료 시, 서버가 정산할 것이므로 클라이언트에서는 간단한 정보만 표시합니다.
     if (!callStartTimeRef.current) {
         executeLeaveRoom();
         return;
     }
     const duration = Date.now() - callStartTimeRef.current;
-    const details = { duration, isCreator, coins: 0, fee: 0 };
-    if (settings) {
-      const perMinuteCost = settings.costPerMinute || 0;
-      const startCost = settings.costToStart || 0;
-      const shareRate = settings.creatorShareRate || 0;
-      const minutes = minutesChargedRef.current;
-
-      if (isCreator) {
-          const payoutPerMinute = Math.floor(perMinuteCost * (shareRate / 100));
-          const coinsEarned = minutes * payoutPerMinute;
-          const totalRevenue = startCost + (minutes * perMinuteCost);
-          details.coins = coinsEarned;
-          details.fee = totalRevenue - coinsEarned;
-      } else {
-          details.coins = startCost + (minutes * perMinuteCost);
-      }
-    }
-    setLeaveDetails(details);
+    // 코인 정보는 더 이상 계산하지 않고, 통화 시간만 전달합니다.
+    setLeaveDetails({ duration });
     setIsLeaveModalOpen(true);
   };
   
@@ -301,7 +196,8 @@ export default function Room() {
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [showToast, handleLeaveRoom]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showToast]);
 
   useEffect(() => {
     if (giftAnimation) {
@@ -319,7 +215,6 @@ export default function Room() {
     }
   };
   
-  // ... (로딩 및 JSX 렌더링 부분은 이전 답변과 동일) ...
   if (isAuthLoading || isSettingsLoading || !user) {
     return (
       <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh'}}>
