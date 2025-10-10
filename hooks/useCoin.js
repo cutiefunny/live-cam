@@ -1,5 +1,6 @@
 // hooks/useCoin.js
-import { collection, addDoc, doc, getDoc, runTransaction as firestoreTransaction, serverTimestamp } from 'firebase/firestore';
+// ✨ [수정] writeBatch를 import 목록에 추가합니다.
+import { collection, addDoc, doc, getDoc, runTransaction as firestoreTransaction, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { ref, push, get, runTransaction } from 'firebase/database';
 import { database, firestore } from '@/lib/firebase';
 import useAppStore from '@/store/useAppStore';
@@ -28,59 +29,72 @@ export function useCoin() {
     const fromUserDocRef = doc(firestore, 'users', fromUserId);
     const toUserDocRef = doc(firestore, 'users', toUserId);
     const settingsDocRef = doc(firestore, 'settings', 'live');
-
-    const settingsDoc = await getDoc(settingsDocRef);
-    const creatorShareRate = settingsDoc.data()?.creatorShareRate || 90;
-    const payoutAmount = Math.floor(cost * (creatorShareRate / 100));
-
-    // ✨ [수정] Firestore 트랜잭션을 사용하여 코인 차감 및 지급
-    await firestoreTransaction(firestore, async (transaction) => {
-      const fromUserDoc = await transaction.get(fromUserDocRef);
-      const currentCoins = fromUserDoc.data()?.coins || 0;
-
-      if (currentCoins < cost) {
-        throw new Error("Not enough coins");
-      }
-
-      transaction.update(fromUserDocRef, { coins: currentCoins - cost });
-      
-      const toUserDoc = await transaction.get(toUserDocRef);
-      const toUserCoins = toUserDoc.data()?.coins || 0;
-      transaction.update(toUserDocRef, { coins: toUserCoins + payoutAmount });
-    });
-
-    // 선물 이벤트는 실시간성이 중요하므로 RealtimeDB 유지
-    const roomGiftsRef = ref(database, `rooms/${roomId}/gifts`);
-    await push(roomGiftsRef, {
-      ...gift,
-      senderId: fromUserId,
-      senderName: user.displayName,
-      timestamp: Date.now(),
-    });
-    
-    // ✨ [수정] 'coin_history' 컬렉션에 문서 추가 (배치 사용)
-    const fromUserData = (await getDoc(fromUserDocRef)).data();
-    const toUserData = (await getDoc(toUserDocRef)).data();
     const historyColRef = collection(firestore, 'coin_history');
 
-    await addDoc(historyColRef, {
-      userId: fromUserId,
-      userName: fromUserData?.displayName,
-      userEmail: fromUserData?.email,
-      type: 'gift_use',
-      amount: cost,
-      timestamp: serverTimestamp(),
-      description: `${toUserData?.displayName}에게 ${gift.name} 선물`
-    });
-    await addDoc(historyColRef, {
-      userId: toUserId,
-      userName: toUserData?.displayName,
-      userEmail: toUserData?.email,
-      type: 'gift_earn',
-      amount: payoutAmount,
-      timestamp: serverTimestamp(),
-      description: `${fromUserData?.displayName}에게 ${gift.name} 선물 받음`
-    });
+    try {
+      const settingsDoc = await getDoc(settingsDocRef);
+      const creatorShareRate = settingsDoc.data()?.creatorShareRate || 90;
+      const payoutAmount = Math.floor(cost * (creatorShareRate / 100));
+
+      await firestoreTransaction(firestore, async (transaction) => {
+        const fromUserDoc = await transaction.get(fromUserDocRef);
+        const currentCoins = fromUserDoc.data()?.coins || 0;
+
+        if (currentCoins < cost) {
+          throw new Error("코인이 부족합니다.");
+        }
+
+        transaction.update(fromUserDocRef, { coins: currentCoins - cost });
+        
+        const toUserDoc = await transaction.get(toUserDocRef);
+        const toUserCoins = toUserDoc.data()?.coins || 0;
+        transaction.update(toUserDocRef, { coins: toUserCoins + payoutAmount });
+      });
+
+      // 선물 이벤트는 실시간성이 중요하므로 RealtimeDB 유지
+      const roomGiftsRef = ref(database, `rooms/${roomId}/gifts`);
+      await push(roomGiftsRef, {
+        ...gift,
+        senderId: fromUserId,
+        senderName: user.displayName,
+        timestamp: Date.now(),
+      });
+      
+      // ✨ [수정] Firestore 'coin_history' 기록을 writeBatch로 원자적 처리
+      const fromUserData = (await getDoc(fromUserDocRef)).data();
+      const toUserData = (await getDoc(toUserDocRef)).data();
+      
+      const batch = writeBatch(firestore);
+      
+      const giftUseHistoryRef = doc(historyColRef);
+      batch.set(giftUseHistoryRef, {
+        userId: fromUserId,
+        userName: fromUserData?.displayName,
+        userEmail: fromUserData?.email,
+        type: 'gift_use',
+        amount: cost,
+        timestamp: serverTimestamp(),
+        description: `${toUserData?.displayName}에게 ${gift.name} 선물`
+      });
+
+      const giftEarnHistoryRef = doc(historyColRef);
+      batch.set(giftEarnHistoryRef, {
+        userId: toUserId,
+        userName: toUserData?.displayName,
+        userEmail: toUserData?.email,
+        type: 'gift_earn',
+        amount: payoutAmount,
+        timestamp: serverTimestamp(),
+        description: `${fromUserData?.displayName}에게 ${gift.name} 선물 받음`
+      });
+
+      await batch.commit();
+
+    } catch (error) {
+       console.error("Failed to send gift:", error);
+       // 에러를 다시 throw하여 호출한 쪽에서 처리하도록 합니다.
+       throw error;
+    }
   };
 
   const submitRating = async (creatorId, rating, comment) => {

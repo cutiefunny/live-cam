@@ -48,66 +48,7 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
         remove(snapshot.ref);
     };
 
-    const payoutToCreator = (creatorId, fromUserId, amount) => {
-      const creatorCoinRef = ref(database, `users/${creatorId}/coins`);
-      runTransaction(creatorCoinRef, (currentCoins) => {
-        return (currentCoins || 0) + amount;
-      }).then(({ committed }) => {
-        if (committed) {
-          console.log(`[Coin] Successfully paid out ${amount} coins to creator ${creatorId}.`);
-          
-          get(ref(database, `users/${creatorId}`)).then(snapshot => {
-            const creatorData = snapshot.val() || {};
-            const coinHistoryRef = ref(database, 'coin_history');
-            push(coinHistoryRef, {
-              userId: creatorId,
-              userName: creatorData.displayName || 'Creator',
-              userEmail: creatorData.email || 'N/A',
-              type: 'earn',
-              amount: amount,
-              timestamp: Date.now(),
-              description: `Video call with ${fromUserId}`
-            });
-          });
-        }
-      });
-    };
-
-    const deductCoin = (userId, peerId, amount, description) => {
-      return new Promise((resolve) => {
-        const userCoinRef = ref(database, `users/${userId}/coins`);
-        runTransaction(userCoinRef, (currentCoins) => {
-          if (currentCoins === null || currentCoins < amount) {
-            return;
-          }
-          return currentCoins - amount;
-        }).then(({ committed }) => {
-          if (committed) {
-            console.log(`[Coin] Successfully deducted ${amount} coins from ${userId}.`);
-            
-            if (description !== '통화 시작') {
-              const payoutAmount = Math.floor(costPerMinute * (creatorShareRate / 100));
-              payoutToCreator(peerId, userId, payoutAmount);
-            }
-
-            const coinHistoryRef = ref(database, 'coin_history');
-            push(coinHistoryRef, {
-              userId: userId,
-              userName: user.displayName,
-              userEmail: user.email,
-              type: 'use',
-              amount: amount,
-              timestamp: Date.now(),
-              description: description === '통화 시작' ? `Video call with ${peerId}` : description
-            });
-            resolve(true);
-          } else {
-            console.log(`[Coin] Failed to deduct coins for ${userId}. Not enough coins.`);
-            resolve(false);
-          }
-        });
-      });
-    };
+    // ✨ [제거] Firestore로 통합되었으므로 중복되는 로직을 제거합니다.
     
     // ✨ [추가] peer의 remoteStream을 상태에 업데이트하는 함수
     const updatePeerStream = (peerID, stream) => {
@@ -131,61 +72,20 @@ export function useRoom(roomID, user, localStream, createPeer, addPeer, iceServe
             startTime: Date.now(),
             peerData: peerData
         };
-        
-        if (!isCreator) {
-          console.log(`[Coin] Initiating coin logic for call with ${peerID}. This user is the caller.`);
 
-          let success = true;
-          if (costToStart > 0) {
-            success = await deductCoin(user.uid, peerID, costToStart, '통화 시작');
-          }
-
-          if (!success) {
-            console.log(`[Coin] Initial charge failed. Terminating call with ${peerID}.`);
-            peer.destroy();
-            return;
-          }
-          
-          const intervalId = setInterval(async () => {
-            const minuteSuccess = await deductCoin(user.uid, peerID, costPerMinute, `Video call minute charge`);
-            if (!minuteSuccess) {
-              console.log(`[Coin] Per-minute charge failed. Terminating call with ${peerID}.`);
-              peer.destroy();
-            }
-          }, 60000);
-          
-          coinDeductionIntervalsRef.current[peerID] = intervalId;
-        }
+        // ✨ [제거] 코인 차감 로직은 page.js로 통합되었습니다.
       });
 
       peer.on('close', () => {
-        console.log(`Call with ${peerID} closed. Saving to history.`);
+        console.log(`Call with ${peerID} closed.`);
 
         if (coinDeductionIntervalsRef.current[peerID]) {
           clearInterval(coinDeductionIntervalsRef.current[peerID]);
           delete coinDeductionIntervalsRef.current[peerID];
-          console.log(`[Coin] Stopped coin deduction for call with ${peerID}.`);
         }
         
-        const callInfo = callStateRef.current[peerID];
-        if (callInfo && callInfo.startTime) {
-            const duration = Date.now() - callInfo.startTime;
-            
-            if (!isCreator) {
-              const historyRef = ref(database, 'call_history');
-              
-              const callRecord = {
-                  callerId: user.uid,
-                  callerName: user.displayName,
-                  calleeId: peerID,
-                  calleeName: callInfo.peerData.displayName,
-                  roomId: roomID,
-                  timestamp: callInfo.startTime,
-                  duration: duration
-              };
-              push(historyRef, callRecord);
-              console.log('[Room] Call history saved by caller.');
-            }
+        // ✨ [제거] 통화 기록 저장은 page.js로 통합되었습니다.
+        if (callStateRef.current[peerID]) {
             delete callStateRef.current[peerID];
         }
       });

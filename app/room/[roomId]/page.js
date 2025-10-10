@@ -9,7 +9,7 @@ import { useCallQuality } from '@/hooks/useCallQuality';
 import useAppStore from '@/store/useAppStore';
 import { database, firestore } from '@/lib/firebase';
 import { ref, onValue, off, remove, set, onDisconnect, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
-import { doc, collection, addDoc, serverTimestamp, runTransaction as firestoreTransaction } from 'firebase/firestore';
+import { doc, collection, addDoc, serverTimestamp, runTransaction as firestoreTransaction, getDoc } from 'firebase/firestore';
 
 
 import Video from '@/components/Video';
@@ -18,6 +18,33 @@ import LeaveConfirmModal from '@/components/LeaveConfirmModal';
 import GiftModal from '@/components/GiftModal';
 import CallQualityIndicator from '@/components/CallQualityIndicator';
 import styles from './Room.module.css';
+
+// ✨ [수정] GiftAnimation 컴포넌트 추가
+const GiftAnimation = () => {
+  const { giftAnimation, setGiftAnimation } = useAppStore();
+
+  useEffect(() => {
+    if (giftAnimation) {
+      const timer = setTimeout(() => {
+        setGiftAnimation(null);
+      }, 3000); // 3초 후에 애니메이션 숨기기
+
+      return () => clearTimeout(timer);
+    }
+  }, [giftAnimation, setGiftAnimation]);
+
+  if (!giftAnimation) return null;
+
+  return (
+    <div className={styles.giftAnimationOverlay}>
+      <div className={styles.giftAnimationContent}>
+        <div className={styles.giftIcon}>{giftAnimation.icon}</div>
+        <p>{giftAnimation.senderName}님이 {giftAnimation.name} 선물을 보냈습니다!</p>
+      </div>
+    </div>
+  );
+};
+
 
 const createDummyStream = () => {
   const canvas = document.createElement('canvas');
@@ -192,7 +219,8 @@ export default function Room() {
 
     const { costToStart, costPerMinute, creatorShareRate } = settings;
 
-    const deduct = async (amount, type) => {
+    // ✨ [수정 시작] 코인 차감 및 내역 기록 로직 수정
+    const deduct = async (amount, type, description) => {
       const userCoinRef = doc(firestore, 'users', user.uid);
       const creatorCoinRef = doc(firestore, 'users', callPartnerRef.current.uid);
       const payoutAmount = Math.floor(amount * (creatorShareRate / 100));
@@ -211,6 +239,34 @@ export default function Room() {
             transaction.update(creatorCoinRef, { coins: creatorCoins + payoutAmount });
           }
         });
+
+        const historyColRef = collection(firestore, 'coin_history');
+        const partnerInfo = callPartnerRef.current;
+
+        await addDoc(historyColRef, {
+          userId: user.uid,
+          userName: user.displayName,
+          userEmail: user.email,
+          type: 'use',
+          amount: amount,
+          timestamp: serverTimestamp(),
+          description: description,
+        });
+
+        if (type === 'minute' || type === 'start') {
+            const creatorDataSnapshot = await getDoc(creatorCoinRef);
+            const creatorData = creatorDataSnapshot.data();
+            await addDoc(historyColRef, {
+              userId: partnerInfo.uid,
+              userName: creatorData?.displayName,
+              userEmail: creatorData?.email,
+              type: 'earn',
+              amount: payoutAmount,
+              timestamp: serverTimestamp(),
+              description: `Video call with ${user.displayName}`
+            });
+        }
+        
         return true;
       } catch (e) {
         showToast(e.message, 'error');
@@ -221,14 +277,15 @@ export default function Room() {
 
     const startDeduction = async () => {
       if (costToStart > 0) {
-        const success = await deduct(costToStart, 'start');
+        const success = await deduct(costToStart, 'start', `Video call with ${callPartnerRef.current.displayName} (start fee)`);
         if (!success) return;
       }
       
       coinDeductionIntervalRef.current = setInterval(() => {
-        deduct(costPerMinute, 'minute');
+        deduct(costPerMinute, 'minute', `Video call with ${callPartnerRef.current.displayName} (per minute)`);
       }, 60000);
     };
+    // ✨ [수정 끝]
 
     startDeduction();
 
@@ -245,7 +302,8 @@ export default function Room() {
 
   return (
     <div className={styles.container}>
-      {/* ... Gift Animation Overlay ... */}
+      {/* ✨ [수정] GiftAnimation 컴포넌트 렌더링 */}
+      <GiftAnimation />
       <header className={styles.header}>
         <h1 className={styles.roomInfo}>Room: <span className={styles.roomId}>{roomId}</span></h1>
         {remoteStream && <CallQualityIndicator quality={callQuality} />}

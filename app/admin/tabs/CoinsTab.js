@@ -62,7 +62,8 @@ const CoinsTab = ({
                   {log.type.includes('give') || log.type.includes('charge') || log.type.includes('earn') ? '+' : '-'}
                   {log.amount}
                 </td>
-                <td>{new Date(log.timestamp).toLocaleString()}</td>
+                {/* ✨ [수정] Firestore Timestamp 객체를 날짜 문자열로 변환 */}
+                <td>{log.timestamp?.toDate().toLocaleString() ?? 'N/A'}</td>
                 <td>{log.description}</td>
               </tr>
             ))}

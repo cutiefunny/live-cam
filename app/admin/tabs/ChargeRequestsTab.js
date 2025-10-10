@@ -24,7 +24,8 @@ const ChargeRequestsTab = ({ requests, onApprove, onReject }) => {
                   <td>{req.userName} ({req.userEmail})</td>
                   <td>💰 {req.amount}</td>
                   <td>{req.price}</td>
-                  <td>{new Date(req.timestamp).toLocaleString()}</td>
+                  {/* ✨ [수정] Firestore Timestamp 객체를 날짜 문자열로 변환 */}
+                  <td>{req.timestamp?.toDate().toLocaleString() ?? 'N/A'}</td>
                   <td>
                     <div className={styles.actionButtons}>
                       <button onClick={() => onApprove(req)} className={styles.approveButton}>

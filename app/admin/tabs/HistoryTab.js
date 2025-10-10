@@ -48,7 +48,8 @@ const HistoryTab = ({
               <tr key={call.id}>
                 <td>{call.callerName}</td>
                 <td>{call.calleeName}</td>
-                <td>{new Date(call.timestamp).toLocaleString()}</td>
+                {/* ✨ [수정] Firestore Timestamp 객체를 날짜 문자열로 변환 */}
+                <td>{call.timestamp?.toDate().toLocaleString() ?? 'N/A'}</td>
                 <td>{formatDuration(call.duration)}</td>
               </tr>
             ))}
