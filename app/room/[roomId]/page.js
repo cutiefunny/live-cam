@@ -19,7 +19,6 @@ import GiftModal from '@/components/GiftModal';
 import CallQualityIndicator from '@/components/CallQualityIndicator';
 import styles from './Room.module.css';
 
-// ✨ [수정] GiftAnimation 컴포넌트 추가
 const GiftAnimation = () => {
   const { giftAnimation, setGiftAnimation } = useAppStore();
 
@@ -169,7 +168,6 @@ export default function Room() {
     }
   }, [peer, otherUser, connections, remoteStreams, callPeer, user.uid]);
   
-  // ✨ [수정] executeLeaveRoom을 handleLeaveRoom보다 먼저 선언합니다.
   const executeLeaveRoom = useCallback((duration) => {
     if (callEndedRef.current) return;
     callEndedRef.current = true;
@@ -219,7 +217,7 @@ export default function Room() {
 
     const { costToStart, costPerMinute, creatorShareRate } = settings;
 
-    // ✨ [수정 시작] 코인 차감 및 내역 기록 로직 수정
+    // ✨ [수정] 트랜잭션 로직을 규칙에 맞게 수정
     const deduct = async (amount, type, description) => {
       const userCoinRef = doc(firestore, 'users', user.uid);
       const creatorCoinRef = doc(firestore, 'users', callPartnerRef.current.uid);
@@ -227,19 +225,29 @@ export default function Room() {
 
       try {
         await firestoreTransaction(firestore, async (transaction) => {
+          // 1. 모든 읽기 작업을 먼저 수행합니다.
           const userDoc = await transaction.get(userCoinRef);
-          const currentCoins = userDoc.data()?.coins || 0;
-          if (currentCoins < amount) throw new Error('코인이 부족합니다.');
+          const creatorDoc = await transaction.get(creatorCoinRef);
           
+          if (!userDoc.exists()) {
+            throw new Error("User document does not exist.");
+          }
+
+          const currentCoins = userDoc.data().coins || 0;
+          if (currentCoins < amount) {
+            throw new Error('코인이 부족합니다.');
+          }
+          
+          // 2. 모든 쓰기 작업을 이후에 수행합니다.
           transaction.update(userCoinRef, { coins: currentCoins - amount });
           
           if (type === 'minute' || type === 'start') {
-            const creatorDoc = await transaction.get(creatorCoinRef);
-            const creatorCoins = creatorDoc.data()?.coins || 0;
+            const creatorCoins = creatorDoc.exists() ? creatorDoc.data().coins || 0 : 0;
             transaction.update(creatorCoinRef, { coins: creatorCoins + payoutAmount });
           }
         });
 
+        // 트랜잭션 성공 후 내역 기록
         const historyColRef = collection(firestore, 'coin_history');
         const partnerInfo = callPartnerRef.current;
 
@@ -285,7 +293,6 @@ export default function Room() {
         deduct(costPerMinute, 'minute', `Video call with ${callPartnerRef.current.displayName} (per minute)`);
       }, 60000);
     };
-    // ✨ [수정 끝]
 
     startDeduction();
 
@@ -294,7 +301,7 @@ export default function Room() {
         clearInterval(coinDeductionIntervalRef.current);
       }
     };
-  }, [isCreator, remoteStream, settings, user, showToast, handleLeaveRoom]);
+  }, [isCreator, remoteStream, settings, user, showToast, handleLeaveRoom, creatorShareRate, costPerMinute, costToStart]);
 
   if (isAuthLoading || isSettingsLoading || !user) {
     return <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '1.25rem'}}>Loading...</div>;
@@ -302,7 +309,6 @@ export default function Room() {
 
   return (
     <div className={styles.container}>
-      {/* ✨ [수정] GiftAnimation 컴포넌트 렌더링 */}
       <GiftAnimation />
       <header className={styles.header}>
         <h1 className={styles.roomInfo}>Room: <span className={styles.roomId}>{roomId}</span></h1>
