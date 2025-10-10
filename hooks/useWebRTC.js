@@ -1,124 +1,114 @@
 // hooks/useWebRTC.js
 'use client';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Peer from 'peerjs';
+import useAppStore from '@/store/useAppStore';
 
-// ✨ WebRTC 연결을 전담 관리하는 싱글톤 객체
-const WebRTCManager = {
-  peer: null,
-  localStream: null,
-  setPeers: null,
-  showToast: null,
+export function useWebRTC(localStream) {
+  const { user, showToast } = useAppStore();
+  const [peer, setPeer] = useState(null);
+  const [connections, setConnections] = useState({});
+  const [remoteStreams, setRemoteStreams] = useState({});
+  const peerInstance = useRef(null);
 
-  // 1. Peer 객체 초기화
-  initialize(user, iceServers, setPeersCallback, showToastCallback) {
-    // 이미 연결되어 있다면 아무것도 하지 않음
-    if (this.peer && !this.peer.destroyed) {
-      console.log('[WebRTCManager] Peer already initialized.');
-      return;
-    }
+  useEffect(() => {
+    if (!user || !localStream) return;
 
-    if (!user || !iceServers || iceServers.length === 0) {
-      console.error('[WebRTCManager] Cannot initialize: user or ICE servers missing.');
-      return;
+    const initializePeer = async () => {
+      try {
+        const iceServers = await fetch('/api/turn').then(res => res.json()).then(data => data.iceServers);
+        
+        const newPeer = new Peer(user.uid, {
+          config: { iceServers },
+          debug: 2, 
+        });
+
+        newPeer.on('open', (id) => {
+          console.log('[useWebRTC] Peer connection open. ID:', id);
+          setPeer(newPeer);
+          peerInstance.current = newPeer;
+        });
+
+        newPeer.on('call', (call) => {
+          console.log(`[useWebRTC] Incoming call from ${call.peer}`);
+          call.answer(localStream);
+          setupCallListeners(call);
+        });
+
+        newPeer.on('error', (err) => {
+          console.error('[useWebRTC] PeerJS error:', err);
+          showToast(`WebRTC 오류: ${err.type}`, 'error');
+        });
+
+        newPeer.on('disconnected', () => {
+            console.log('[useWebRTC] Peer disconnected. Attempting to reconnect...');
+            newPeer.reconnect();
+        });
+        
+      } catch (error) {
+        console.error("Failed to initialize Peer:", error);
+        showToast('WebRTC 초기화에 실패했습니다.', 'error');
+      }
+    };
+
+    if (!peerInstance.current) {
+      initializePeer();
     }
     
-    console.log('[WebRTCManager] Initializing Peer instance...');
-    this.peer = new Peer(user.uid, {
-      config: { iceServers },
-    });
-
-    // React 상태 업데이트 함수와 토스트 함수를 저장
-    this.setPeers = setPeersCallback;
-    this.showToast = showToastCallback;
-
-    // 모든 이벤트 리스너를 한 번만 등록
-    this.peer.on('open', this.handleOpen);
-    this.peer.on('call', this.handleCall);
-    this.peer.on('error', this.handleError);
-    this.peer.on('disconnected', this.handleDisconnected);
-  },
-
-  // 2. 로컬 미디어 스트림 설정
-  setLocalStream(stream) {
-    this.localStream = stream;
-  },
-
-  // 3. 전화 걸기
-  callPeer(remotePeerId) {
-    if (!this.peer || !this.localStream) {
-      console.error('[WebRTCManager] Cannot call: Peer or local stream not ready.');
-      return;
-    }
-    console.log(`[WebRTCManager] Calling ${remotePeerId}`);
-    const call = this.peer.call(remotePeerId, this.localStream);
-    this.attachCallListeners(call);
-  },
-  
-  // 4. 연결 종료 및 모든 자원 해제
-  destroy() {
-    console.log('[WebRTCManager] Destroying Peer instance and cleaning up.');
-    if (this.peer) {
-      // 모든 이벤트 리스너 제거
-      this.peer.off('open', this.handleOpen);
-      this.peer.off('call', this.handleCall);
-      this.peer.off('error', this.handleError);
-      this.peer.off('disconnected', this.handleDisconnected);
-      
-      if (!this.peer.destroyed) {
-        this.peer.destroy();
+    return () => {
+      if (peerInstance.current) {
+        peerInstance.current.destroy();
+        peerInstance.current = null;
+        setPeer(null);
+        console.log('[useWebRTC] Peer instance destroyed.');
       }
-    }
-    this.peer = null;
-    this.localStream = null;
-    this.setPeers = null;
-    this.showToast = null;
-  },
-
-  // --- 이벤트 핸들러 ---
-  handleOpen(id) {
-    console.log('[WebRTCManager] Peer connection open. ID:', id);
-  },
-
-  handleCall(call) {
-    console.log(`[WebRTCManager] Incoming call from ${call.peer}`);
-    if (WebRTCManager.localStream) {
-      call.answer(WebRTCManager.localStream);
-      WebRTCManager.attachCallListeners(call);
-    } else {
-      console.warn('[WebRTCManager] No local stream to answer call.');
-    }
-  },
-
-  handleError(err) {
-    console.error('[WebRTCManager] PeerJS error:', err);
-    if (WebRTCManager.showToast && err.type !== 'peer-unavailable' && err.type !== 'unavailable-id') {
-      WebRTCManager.showToast(`WebRTC 연결 오류: ${err.type}`, 'error');
-    }
-  },
+    };
+  }, [user, localStream, showToast]);
   
-  handleDisconnected() {
-     console.log('[WebRTCManager] Peer disconnected from server.');
-  },
-
-  attachCallListeners(call) {
+  const setupCallListeners = useCallback((call) => {
     call.on('stream', (remoteStream) => {
-      console.log(`[WebRTCManager] Received remote stream from ${call.peer}`);
-      if (WebRTCManager.setPeers) {
-        WebRTCManager.setPeers(prev => ({ ...prev, [call.peer]: { call, remoteStream } }));
-      }
+      console.log(`[useWebRTC] Received remote stream from ${call.peer}`);
+      setRemoteStreams(prev => ({ ...prev, [call.peer]: remoteStream }));
     });
 
     call.on('close', () => {
-      console.log(`[WebRTCManager] Call with ${call.peer} closed.`);
-      if (WebRTCManager.setPeers) {
-        WebRTCManager.setPeers(prev => {
-          const newPeers = { ...prev };
-          delete newPeers[call.peer];
-          return newPeers;
-        });
-      }
+      console.log(`[useWebRTC] Call with ${call.peer} closed.`);
+      setConnections(prev => {
+        const newConns = { ...prev };
+        delete newConns[call.peer];
+        return newConns;
+      });
+      setRemoteStreams(prev => {
+        const newStreams = { ...prev };
+        delete newStreams[call.peer];
+        return newStreams;
+      });
     });
-  }
-};
+    
+    call.on('error', (err) => {
+        console.error(`[useWebRTC] Call error with ${call.peer}:`, err);
+    });
 
-export default WebRTCManager;
+    setConnections(prev => ({ ...prev, [call.peer]: call }));
+  }, []);
+
+  const callPeer = useCallback((remotePeerId) => {
+    if (!peer || !localStream) {
+      console.error('[useWebRTC] Cannot call: Peer or local stream not ready.');
+      return;
+    }
+    console.log(`[useWebRTC] Calling ${remotePeerId}`);
+    const call = peer.call(remotePeerId, localStream);
+    if (call) {
+      setupCallListeners(call);
+    }
+  }, [peer, localStream, setupCallListeners]);
+  
+  const disconnectAll = useCallback(() => {
+    Object.values(connections).forEach(conn => conn.close());
+    setConnections({});
+    setRemoteStreams({});
+  }, [connections]);
+
+  return { peer, connections, remoteStreams, callPeer, disconnectAll };
+}
