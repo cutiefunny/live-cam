@@ -1,11 +1,9 @@
 // hooks/useUserProfile.js
 import { updateProfile } from "firebase/auth";
-// ✨ [수정] RealtimeDB 관련 import 제거
 import { doc, updateDoc, getDoc, arrayUnion, arrayRemove, writeBatch } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-// ✨ [수정] RealtimeDB(database) import 제거
 import { auth, storage, firestore } from '@/lib/firebase';
-import { processImageForUpload } from '@/lib/imageUtils';
+// import { processImageForUpload } from '@/lib/imageUtils'; // 삭제
 import useAppStore from '@/store/useAppStore';
 
 export function useUserProfile() {
@@ -18,9 +16,9 @@ export function useUserProfile() {
 
     try {
       if (newAvatarFile) {
-        const processedImageBlob = await processImageForUpload(newAvatarFile, 150);
-        const avatarRef = storageRef(storage, `avatars/${user.uid}.avif`);
-        const snapshot = await uploadBytes(avatarRef, processedImageBlob);
+        // ✨ [수정] 이미지 처리 로직 제거 및 확장자 없는 참조 사용
+        const avatarRef = storageRef(storage, `avatars/${user.uid}`);
+        const snapshot = await uploadBytes(avatarRef, newAvatarFile);
         newPhotoURL = await getDownloadURL(snapshot.ref);
       }
 
@@ -28,23 +26,21 @@ export function useUserProfile() {
         displayName: newDisplayName,
         photoURL: newPhotoURL,
       });
-      
+
       const userDocRef = doc(firestore, 'users', user.uid);
       await updateDoc(userDocRef, {
         displayName: newDisplayName,
         photoURL: newPhotoURL,
       });
 
-      // ✨ [제거] RealtimeDB 업데이트 로직 전체 제거
-      
       setUser({ ...user, displayName: newDisplayName, photoURL: newPhotoURL });
-      
+
     } catch (error) {
       console.error("Error updating profile:", error);
       throw error;
     }
   };
-  
+
   const toggleFollowCreator = async (creatorId) => {
     if (!user) {
         showToast('로그인이 필요합니다.', 'error');

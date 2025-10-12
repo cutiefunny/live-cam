@@ -393,8 +393,8 @@
   z-index: 1100;
 }
 
-.photoModalContent {
-  max-width: 90vw;
-  max-height: 90vh;
-  object-fit: contain;
+.photoModalContentWrapper {
+  position: relative;
+  width: 90vw;
+  height: 90vh;
 }

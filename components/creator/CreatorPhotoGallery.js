@@ -1,6 +1,7 @@
 // components/creator/CreatorPhotoGallery.js
 'use client';
 import { useState } from 'react';
+import Image from 'next/image'; // ✨ [추가]
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { EffectCoverflow, Pagination } from 'swiper/modules'; 
 import 'swiper/css';
@@ -9,8 +10,17 @@ import 'swiper/css/pagination';
 import styles from '@/app/creator/[creatorId]/CreatorProfile.module.css';
 
 const ImageModal = ({ src, onClose }) => (
+  // ✨ [수정] Image 컴포넌트를 사용하기 위해 구조 변경
   <div className={styles.photoModalOverlay} onClick={onClose}>
-    <img src={src} alt="Selected" className={styles.photoModalContent} />
+    <div className={styles.photoModalContentWrapper}>
+      <Image 
+        src={src} 
+        alt="Selected" 
+        fill
+        sizes="90vw"
+        style={{objectFit: 'contain'}} 
+      />
+    </div>
   </div>
 );
 
@@ -70,7 +80,6 @@ export default function CreatorPhotoGallery({ photos, isOwner, onAddPhoto, onDel
           pagination={{
             el: `.${styles.paginationContainer}`,
             clickable: true,
-            // ✨ [제거] renderBullet 함수를 제거합니다.
           }}
           modules={[EffectCoverflow, Pagination]}
           onSwiper={setSwiperInstance}
@@ -79,11 +88,16 @@ export default function CreatorPhotoGallery({ photos, isOwner, onAddPhoto, onDel
           {photos.map((photo, index) => (
             <SwiperSlide key={photo.id} className={styles.albumSlide}>
               {({ isActive }) => (
-                <img
+                // ✨ [수정] img -> Image
+                <Image
                   src={photo.url}
                   alt={`Creator content ${index + 1}`}
+                  fill
+                  sizes="(max-width: 768px) 75vw, 400px"
+                  style={{ objectFit: 'cover' }}
                   className={styles.albumImage}
                   onClick={() => isActive && setSelectedImage(photo.url)}
+                  priority={index < 3} // 처음 3개 이미지는 우선적으로 로드
                 />
               )}
             </SwiperSlide>

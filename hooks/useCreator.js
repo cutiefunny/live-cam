@@ -1,12 +1,11 @@
 // hooks/useCreator.js
 'use client';
 import { useState, useEffect } from 'react';
-// ✨ [수정] 'off' 함수를 import 목록에 추가합니다.
 import { ref, onDisconnect, remove, onValue, get, set, off } from 'firebase/database';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { database, storage, firestore } from '@/lib/firebase';
-import { processImageForUpload } from '@/lib/imageUtils';
+// import { processImageForUpload } from '@/lib/imageUtils'; // 삭제
 import useAppStore from '@/store/useAppStore';
 import { nanoid } from 'nanoid';
 
@@ -42,7 +41,7 @@ export function useCreator() {
       remove(creatorRef);
     };
   }, [user, isUserRoleCreator, isOnline]);
-  
+
   useEffect(() => {
     if (user && isUserRoleCreator) {
       const creatorRef = ref(database, `creators/${user.uid}`);
@@ -63,8 +62,8 @@ export function useCreator() {
     const uploadPromises = files.map(async (file) => {
       const photoId = nanoid(10);
       const imageRef = storageRef(storage, `creator_photos/${user.uid}/${photoId}`);
-      const processedImage = await processImageForUpload(file, 800);
-      const snapshot = await uploadBytes(imageRef, processedImage);
+      // ✨ [수정] 이미지 처리 로직 제거
+      const snapshot = await uploadBytes(imageRef, file);
       const url = await getDownloadURL(snapshot.ref);
       return { id: photoId, url };
     });
@@ -74,7 +73,7 @@ export function useCreator() {
     const profileDocRef = doc(firestore, 'creator_profiles', user.uid);
     const profileDoc = await getDoc(profileDocRef);
     const existingPhotos = profileDoc.data()?.photos || [];
-    
+
     const updatedPhotos = [...existingPhotos, ...newPhotos].map((photo, index) => ({ ...photo, order: index }));
 
     await setDoc(profileDocRef, { photos: updatedPhotos }, { merge: true });
@@ -82,13 +81,13 @@ export function useCreator() {
 
   const deleteCreatorPhoto = async (photoId) => {
     if (!user || !photoId) throw new Error("Invalid arguments");
-    
+
     const profileDocRef = doc(firestore, 'creator_profiles', user.uid);
     const profileDoc = await getDoc(profileDocRef);
     const existingPhotos = profileDoc.data()?.photos || [];
 
     const photoToDelete = existingPhotos.find(p => p.id === photoId);
-    
+
     if (photoToDelete) {
       const imageRef = storageRef(storage, `creator_photos/${user.uid}/${photoId}`);
       try {

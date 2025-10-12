@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import Image from 'next/image'; // ✨ [추가]
 import { firestore } from '@/lib/firebase';
 import useAppStore from '@/store/useAppStore';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -140,7 +141,15 @@ export default function CreatorProfilePage() {
         <div className={styles.profileContainer}>
           <div className={styles.profileHeader}>
             <div className={styles.profileAvatarContainer}>
-              <img src={creatorInfo.photoURL || '/images/icon.png'} alt={creatorInfo.displayName} className={styles.profileAvatar} />
+              {/* ✨ [수정] img -> Image */}
+              <Image 
+                src={creatorInfo.photoURL || '/images/icon.png'} 
+                alt={creatorInfo.displayName} 
+                width={90}
+                height={90}
+                className={styles.profileAvatar} 
+                priority
+              />
             </div>
 
             <div className={styles.profileInfoContainer}>

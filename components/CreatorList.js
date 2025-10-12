@@ -2,6 +2,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image'; // ✨ [추가]
 import styles from './CreatorList.module.css';
 
 const CreatorList = ({ rankedCreators, user, onCallCreator }) => {
@@ -22,10 +23,16 @@ const CreatorList = ({ rankedCreators, user, onCallCreator }) => {
                   <Link href={`/creator/${creator.uid}`} className={styles.creatorNameLink}>
                     <span className={styles.creatorRank}>{index + 1}</span>
                     <div className={styles.creatorAvatarContainer}>
-                        <img src={creator.photoURL || '/images/icon.png'} alt={creator.displayName || 'No Name'} className={styles.creatorAvatar} />
+                        {/* ✨ [수정] img -> Image */}
+                        <Image 
+                            src={creator.photoURL || '/images/icon.png'} 
+                            alt={creator.displayName || 'No Name'} 
+                            width={32}
+                            height={32}
+                            className={styles.creatorAvatar} 
+                        />
                         {creator.isOnline && <div className={styles.onlineIndicator}></div>}
                     </div>
-                    {/* ✨ [수정] displayName이 없을 경우 '이름 없음'을 표시합니다. */}
                     {creator.displayName || '이름 없음'}
                   </Link>
                 </div>
