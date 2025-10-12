@@ -3,7 +3,7 @@ import { updateProfile } from "firebase/auth";
 import { doc, updateDoc, getDoc, arrayUnion, arrayRemove, writeBatch } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, storage, firestore } from '@/lib/firebase';
-// import { processImageForUpload } from '@/lib/imageUtils'; // 삭제
+import { processImageForUpload } from '@/lib/imageUtils'; // ✨ [추가]
 import useAppStore from '@/store/useAppStore';
 
 export function useUserProfile() {
@@ -16,9 +16,10 @@ export function useUserProfile() {
 
     try {
       if (newAvatarFile) {
-        // ✨ [수정] 이미지 처리 로직 제거 및 확장자 없는 참조 사용
+        // ✨ [수정] 이미지 처리 로직 추가
+        const processedImageBlob = await processImageForUpload(newAvatarFile, 400); // 아바타는 400px로 리사이즈
         const avatarRef = storageRef(storage, `avatars/${user.uid}`);
-        const snapshot = await uploadBytes(avatarRef, newAvatarFile);
+        const snapshot = await uploadBytes(avatarRef, processedImageBlob);
         newPhotoURL = await getDownloadURL(snapshot.ref);
       }
 

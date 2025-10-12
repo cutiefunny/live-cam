@@ -5,7 +5,7 @@ import { ref, onDisconnect, remove, onValue, get, set, off } from 'firebase/data
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { database, storage, firestore } from '@/lib/firebase';
-// import { processImageForUpload } from '@/lib/imageUtils'; // 삭제
+import { processImageForUpload } from '@/lib/imageUtils'; // ✨ [추가]
 import useAppStore from '@/store/useAppStore';
 import { nanoid } from 'nanoid';
 
@@ -62,8 +62,9 @@ export function useCreator() {
     const uploadPromises = files.map(async (file) => {
       const photoId = nanoid(10);
       const imageRef = storageRef(storage, `creator_photos/${user.uid}/${photoId}`);
-      // ✨ [수정] 이미지 처리 로직 제거
-      const snapshot = await uploadBytes(imageRef, file);
+      // ✨ [수정] 이미지 처리 로직 추가
+      const processedImageBlob = await processImageForUpload(file, 1280); // 크리에이터 사진은 1280px로 리사이즈
+      const snapshot = await uploadBytes(imageRef, processedImageBlob);
       const url = await getDownloadURL(snapshot.ref);
       return { id: photoId, url };
     });
