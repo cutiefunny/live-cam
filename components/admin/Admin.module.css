@@ -40,6 +40,7 @@
 .table td {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid #374151;
+  white-space: nowrap; /* ✨ [추가] 테이블 내용이 줄바꿈되지 않도록 */
 }
 
 .table th {
@@ -396,4 +397,93 @@
 }
 .rejectButton:hover {
   background-color: #b91c1c;
+}
+
+/* ✨ [추가] 모바일 반응형 스타일 */
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .title {
+    font-size: 1.8rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .tabNav {
+    /* 탭이 많아질 경우 가로 스크롤 가능하도록 */
+    overflow-x: auto;
+    padding-bottom: 5px; /* 스크롤바 공간 확보 */
+  }
+  .tabButton {
+    white-space: nowrap; /* 탭 버튼 이름이 줄바꿈되지 않도록 */
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+  }
+
+  .sectionHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .searchInput, .searchContainer {
+    width: 100%;
+  }
+
+  .searchContainer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dashboardGrid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  
+  .gridItem {
+    padding: 1rem;
+  }
+
+  /* 테이블에서 모바일일 때 숨길 컬럼 */
+  .hideOnMobile {
+    display: none;
+  }
+
+  .modalContent {
+    width: 95%;
+    padding: 1rem 1.5rem;
+  }
+}
+
+/* 아주 작은 화면을 위한 추가 조정 */
+@media (max-width: 480px) {
+  .container {
+    padding: 0.5rem;
+  }
+  .sectionTitle {
+    font-size: 1.25rem;
+  }
+  .actionButtons {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 0.25rem;
+  }
+  .approveButton, .rejectButton {
+    width: 100%;
+    text-align: center;
+  }
+  .coinControl {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .coinInput {
+    width: 100%;
+  }
+  .settingRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
 }
