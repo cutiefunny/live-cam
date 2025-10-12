@@ -41,8 +41,14 @@ const CreatorList = ({ rankedCreators, user, onCallCreator }) => {
                     onClick={() => onCallCreator(creator)} 
                     className={styles.callButton}
                     disabled={!creator.isOnline}
+                    title="통화하기" // ✨ [추가] 툴팁 추가
                   >
-                    Call
+                    <Image // ✨ [수정] 텍스트 대신 Image 컴포넌트 사용
+                      src="/images/call-icon.png"
+                      alt="통화 아이콘"
+                      width={24}
+                      height={24}
+                    />
                   </button>
                 )}
               </div>

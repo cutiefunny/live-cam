@@ -1,7 +1,7 @@
 // components/FollowingList.js
 'use client';
 import Link from 'next/link';
-import Image from 'next/image';
+import Image from 'next/image'; // Image 컴포넌트 임포트
 import { useRouter } from 'next/navigation';
 import styles from './FollowingList.module.css';
 
@@ -40,15 +40,27 @@ const FollowingList = ({ followingCreators, user, onCallCreator }) => {
                 <button 
                   onClick={() => handleChatCreator(creator)} 
                   className={styles.chatButton}
+                  title="채팅하기" // ✨ [추가] 툴팁 추가
                 >
-                  Chat
+                  <Image // ✨ [수정] 텍스트 대신 Image 컴포넌트 사용
+                    src="/images/chat-icon.png"
+                    alt="채팅 아이콘"
+                    width={24}
+                    height={24}
+                  />
                 </button>
                 <button 
                   onClick={() => onCallCreator(creator)} 
                   className={styles.callButton}
                   disabled={!creator.isOnline}
+                  title="통화하기" // ✨ [추가] 툴팁 추가
                 >
-                  Call
+                  <Image // ✨ [수정] 텍스트 대신 Image 컴포넌트 사용
+                    src="/images/call-icon.png"
+                    alt="통화 아이콘"
+                    width={24}
+                    height={24}
+                  />
                 </button>
               </div>
             )}
