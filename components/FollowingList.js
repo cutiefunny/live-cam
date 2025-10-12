@@ -1,12 +1,20 @@
 // components/FollowingList.js
 'use client';
 import Link from 'next/link';
+import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import styles from './FollowingList.module.css';
 
 const FollowingList = ({ followingCreators, user, onCallCreator }) => {
+  const router = useRouter();
+
   if (!followingCreators || followingCreators.length === 0) {
-    return null; // 팔로우하는 크리에이터가 없으면 아무것도 렌더링하지 않음
+    return null;
   }
+
+  const handleChatCreator = (creator) => {
+    router.push(`/chat/${creator.uid}`);
+  };
 
   return (
     <div className={styles.container}>
@@ -16,19 +24,33 @@ const FollowingList = ({ followingCreators, user, onCallCreator }) => {
           <div key={creator.uid} className={styles.item}>
             <Link href={`/creator/${creator.uid}`} className={styles.profileLink}>
               <div className={styles.avatarContainer}>
-                <img src={creator.photoURL || '/images/icon.png'} alt={creator.displayName} className={styles.avatar} />
+                <Image 
+                    src={creator.photoURL || '/images/icon.png'} 
+                    alt={creator.displayName} 
+                    width={36}
+                    height={36}
+                    className={styles.avatar} 
+                />
                 {creator.isOnline && <div className={styles.onlineIndicator}></div>}
               </div>
               <span className={styles.displayName}>{creator.displayName}</span>
             </Link>
             {creator.uid !== user.uid && (
-              <button 
-                onClick={() => onCallCreator(creator)} 
-                className={styles.callButton}
-                disabled={!creator.isOnline}
-              >
-                Call
-              </button>
+              <div className={styles.buttonGroup}>
+                <button 
+                  onClick={() => handleChatCreator(creator)} 
+                  className={styles.chatButton}
+                >
+                  Chat
+                </button>
+                <button 
+                  onClick={() => onCallCreator(creator)} 
+                  className={styles.callButton}
+                  disabled={!creator.isOnline}
+                >
+                  Call
+                </button>
+              </div>
             )}
           </div>
         ))}

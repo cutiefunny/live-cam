@@ -47,6 +47,17 @@
   gap: 1rem;
 }
 
+.chatIcon {
+  font-size: 1.5rem;
+  text-decoration: none;
+  filter: grayscale(1);
+  transition: filter 0.2s;
+}
+
+.chatIcon:hover {
+  filter: grayscale(0);
+}
+
 .avatarButton {
   background: none;
   padding: 0;
