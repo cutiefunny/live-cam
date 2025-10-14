@@ -13,12 +13,6 @@ export function useCallHandler(remoteStream, callPartner) {
   const callStartTimeRef = useRef(null);
   const callEndedRef = useRef(false);
   const coinDeductionIntervalRef = useRef(null);
-  const partnerRef = useRef(callPartner); // ✨ [추가] 상대방 정보를 ref에 저장
-
-  // ✨ [추가] callPartner prop이 변경될 때마다 ref를 업데이트합니다.
-  useEffect(() => {
-    partnerRef.current = callPartner;
-  }, [callPartner]);
 
   const executeLeaveRoom = useCallback((duration) => {
     if (callEndedRef.current) return;
@@ -27,25 +21,23 @@ export function useCallHandler(remoteStream, callPartner) {
     if (coinDeductionIntervalRef.current) {
       clearInterval(coinDeductionIntervalRef.current);
     }
-    
-    // ✨ [수정] prop 대신 ref에 저장된 상대방 정보를 사용합니다.
-    const finalPartner = partnerRef.current; 
-    if (!isCreator && finalPartner && duration > 10000) { // 10초 이상 통화 시
+
+    if (!isCreator && callPartner && duration > 10000) { // 10초 이상 통화 시
         const historyRef = collection(firestore, 'call_history');
         addDoc(historyRef, {
             callerId: user.uid,
             callerName: user.displayName,
-            calleeId: finalPartner.uid,
-            calleeName: finalPartner.displayName,
-            roomId: finalPartner.roomId,
+            calleeId: callPartner.uid,
+            calleeName: callPartner.displayName,
+            roomId: callPartner.roomId, // roomId를 callPartner에서 가져오도록 수정
             timestamp: serverTimestamp(),
             duration: duration
         });
-        openRatingModal({ creatorId: finalPartner.uid, creatorName: finalPartner.displayName });
+        openRatingModal({ creatorId: callPartner.uid, creatorName: callPartner.displayName });
     }
     
     router.replace('/');
-  }, [isCreator, user, openRatingModal, router]); // ✨ [수정] 의존성 배열에서 callPartner 제거
+  }, [isCreator, callPartner, user, openRatingModal, router]);
 
   useEffect(() => {
     if (isCreator || !remoteStream || !settings || !user || !callPartner) {
