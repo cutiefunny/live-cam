@@ -12,7 +12,6 @@ export function useWebRTC(localStream) {
   const peerInstance = useRef(null);
 
   useEffect(() => {
-    // ✨ [수정] user나 localStream이 없거나, 이미 Peer 인스턴스가 존재하면 재초기화하지 않도록 방지
     if (!user || !localStream || peerInstance.current) return;
 
     const initializePeer = async () => {
@@ -38,8 +37,15 @@ export function useWebRTC(localStream) {
 
         newPeer.on('error', (err) => {
           console.error('[useWebRTC] PeerJS error:', err);
-          // ✨ [수정] 의존성을 없애기 위해 스토어의 getState를 직접 사용
-          useAppStore.getState().showToast(`WebRTC 오류: ${err.type}`, 'error');
+
+          // ✨ [수정] 'peer-unavailable' 에러는 일반적인 연결 종료 시 발생할 수 있으므로
+          // 사용자에게 불필요한 에러 토스트를 보여주지 않습니다.
+          if (err.type === 'peer-unavailable') {
+            console.warn(`[useWebRTC] Peer unavailable error caught. This is expected when the other user disconnects.`);
+            return;
+          }
+          
+          useAppStore.getState().showToast(`WebRTC 오류: ${err.type || '연결 실패'}`, 'error');
         });
 
         newPeer.on('disconnected', () => {
@@ -63,13 +69,11 @@ export function useWebRTC(localStream) {
         console.log('[useWebRTC] Peer instance destroyed.');
       }
     };
-  // ✨ [수정] 의존성 배열에서 showToast 제거
   }, [user, localStream]);
   
   const setupCallListeners = useCallback((call) => {
     call.on('stream', (remoteStream) => {
       console.log(`[useWebRTC] Received remote stream from ${call.peer}`);
-      // ✨ [수정] 중복 스트림 이벤트 방지
       setRemoteStreams(prev => {
         if (prev[call.peer] && prev[call.peer].id === remoteStream.id) {
           return prev;
