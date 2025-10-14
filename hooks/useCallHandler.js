@@ -50,6 +50,7 @@ export function useCallHandler(remoteStream, callPartner) {
         return;
     }
 
+    console.log('[useCallHandler] Call timer started.'); // ✨ [추가]
     callStartTimeRef.current = Date.now();
 
     const { costToStart, costPerMinute, creatorShareRate } = settings;

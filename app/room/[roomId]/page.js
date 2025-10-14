@@ -1,6 +1,6 @@
 // app/room/[roomId]/page.js
 'use client';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'; // useMemo 추가
 import { useParams } from 'next/navigation';
 import { useWebRTC } from '@/hooks/useWebRTC';
 import { useSettings } from '@/hooks/useSettings';
@@ -10,14 +10,14 @@ import { useRoomPresence } from '@/hooks/useRoomPresence';
 import { useRoomEvents } from '@/hooks/useRoomEvents';
 import { useCallHandler } from '@/hooks/useCallHandler';
 import useAppStore from '@/store/useAppStore';
-import { createDummyStream } from '@/lib/utils'; // ✨ [수정]
+import { createDummyStream } from '@/lib/utils';
 
 import LeaveConfirmModal from '@/components/LeaveConfirmModal';
 import GiftModal from '@/components/GiftModal';
-import GiftAnimation from '@/components/room/GiftAnimation'; // ✨ [수정]
-import CallHeader from '@/components/room/CallHeader'; // ✨ [추가]
-import VideoGrid from '@/components/room/VideoGrid'; // ✨ [추가]
-import CallFooter from '@/components/room/CallFooter'; // ✨ [추가]
+import GiftAnimation from '@/components/room/GiftAnimation';
+import CallHeader from '@/components/room/CallHeader';
+import VideoGrid from '@/components/room/VideoGrid';
+import CallFooter from '@/components/room/CallFooter';
 import styles from './Room.module.css';
 
 
@@ -66,7 +66,13 @@ export default function Room() {
   const remotePeerId = otherUser?.uid;
   const remoteStream = remotePeerId ? remoteStreams[remotePeerId] : null;
 
-  const { executeLeaveRoom, callStartTimeRef } = useCallHandler(remoteStream, otherUser ? {...otherUser, roomId} : null);
+  // ✨ [수정] callPartner 객체를 useMemo로 메모이제이션합니다.
+  const callPartner = useMemo(() => {
+    if (!otherUser) return null;
+    return { ...otherUser, roomId };
+  }, [otherUser, roomId]);
+
+  const { executeLeaveRoom, callStartTimeRef } = useCallHandler(remoteStream, callPartner);
   const callQuality = useCallQuality(remotePeerId ? connections[remotePeerId] : null);
 
 
