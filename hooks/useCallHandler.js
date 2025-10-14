@@ -14,7 +14,7 @@ export function useCallHandler(remoteStream, callPartner) {
   const callEndedRef = useRef(false);
   const coinDeductionIntervalRef = useRef(null);
 
-  const executeLeaveRoom = useCallback((duration) => {
+  const executeLeaveRoom = useCallback(async (duration) => {
     if (callEndedRef.current) return;
     callEndedRef.current = true;
 
@@ -22,22 +22,27 @@ export function useCallHandler(remoteStream, callPartner) {
       clearInterval(coinDeductionIntervalRef.current);
     }
 
-    if (!isCreator && callPartner && duration > 10000) { // 10초 이상 통화 시
-        const historyRef = collection(firestore, 'call_history');
-        addDoc(historyRef, {
-            callerId: user.uid,
-            callerName: user.displayName,
-            calleeId: callPartner.uid,
-            calleeName: callPartner.displayName,
-            roomId: callPartner.roomId, // roomId를 callPartner에서 가져오도록 수정
-            timestamp: serverTimestamp(),
-            duration: duration
-        });
-        openRatingModal({ creatorId: callPartner.uid, creatorName: callPartner.displayName });
+    try {
+      if (!isCreator && callPartner && duration > 10000) { // 10초 이상 통화 시
+          const historyRef = collection(firestore, 'call_history');
+          await addDoc(historyRef, {
+              callerId: user.uid,
+              callerName: user.displayName,
+              calleeId: callPartner.uid,
+              calleeName: callPartner.displayName,
+              roomId: callPartner.roomId,
+              timestamp: serverTimestamp(),
+              duration: duration
+          });
+          openRatingModal({ creatorId: callPartner.uid, creatorName: callPartner.displayName });
+      }
+    } catch (error) {
+      console.error("Failed to record call history:", error);
+      showToast('통화 내역 기록에 실패했습니다.', 'error');
+    } finally {
+      router.replace('/');
     }
-    
-    router.replace('/');
-  }, [isCreator, callPartner, user, openRatingModal, router]);
+  }, [isCreator, callPartner, user, openRatingModal, router, showToast]);
 
   useEffect(() => {
     if (isCreator || !remoteStream || !settings || !user || !callPartner) {
