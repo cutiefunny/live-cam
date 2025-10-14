@@ -6,63 +6,19 @@ import { useWebRTC } from '@/hooks/useWebRTC';
 import { useSettings } from '@/hooks/useSettings';
 import { useCoin } from '@/hooks/useCoin';
 import { useCallQuality } from '@/hooks/useCallQuality';
-import { useRoom } from '@/hooks/useRoom'; // ✨ 수정
-import { useCallHandler } from '@/hooks/useCallHandler'; 
+import { useRoomPresence } from '@/hooks/useRoomPresence';
+import { useRoomEvents } from '@/hooks/useRoomEvents';
+import { useCallHandler } from '@/hooks/useCallHandler';
 import useAppStore from '@/store/useAppStore';
+import { createDummyStream } from '@/lib/utils'; // ✨ [수정]
 
-import Video from '@/components/Video';
-import Controls from '@/components/Controls';
 import LeaveConfirmModal from '@/components/LeaveConfirmModal';
 import GiftModal from '@/components/GiftModal';
-import CallQualityIndicator from '@/components/CallQualityIndicator';
+import GiftAnimation from '@/components/room/GiftAnimation'; // ✨ [수정]
+import CallHeader from '@/components/room/CallHeader'; // ✨ [추가]
+import VideoGrid from '@/components/room/VideoGrid'; // ✨ [추가]
+import CallFooter from '@/components/room/CallFooter'; // ✨ [추가]
 import styles from './Room.module.css';
-
-
-const GiftAnimation = () => {
-  const { giftAnimation, setGiftAnimation } = useAppStore();
-
-  useEffect(() => {
-    if (giftAnimation) {
-      const timer = setTimeout(() => {
-        setGiftAnimation(null);
-      }, 3000); 
-
-      return () => clearTimeout(timer);
-    }
-  }, [giftAnimation, setGiftAnimation]);
-
-  if (!giftAnimation) return null;
-
-  return (
-    <div className={styles.giftAnimationOverlay}>
-      <div className={styles.giftAnimationContent}>
-        <div className={styles.giftIcon}>{giftAnimation.icon}</div>
-        <p>{giftAnimation.senderName}님이 {giftAnimation.name} 선물을 보냈습니다!</p>
-      </div>
-    </div>
-  );
-};
-
-
-const createDummyStream = () => {
-  const canvas = document.createElement('canvas');
-  canvas.width = 1;
-  canvas.height = 1;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-      ctx.fillRect(0, 0, 1, 1);
-  }
-  const stream = canvas.captureStream();
-  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  const oscillator = audioContext.createOscillator();
-  const dst = oscillator.connect(audioContext.createMediaStreamDestination());
-  oscillator.start();
-  const audioTrack = dst.stream.getAudioTracks()[0];
-  stream.addTrack(audioTrack);
-  
-  stream.getTracks().forEach(track => track.enabled = false);
-  return stream;
-};
 
 
 export default function Room() {
@@ -79,7 +35,7 @@ export default function Room() {
 
   const isLeavingRef = useRef(false);
 
-  // 1. Initialize media stream
+  // 1. 미디어 스트림 초기화
   useEffect(() => {
     let streamInstance = null;
     const initStream = async () => {
@@ -100,9 +56,13 @@ export default function Room() {
     };
   }, [showToast]);
 
-  const { otherUser } = useRoom(roomId);
+  // 2. 커스텀 훅으로 로직 관리
+  useRoomPresence(roomId, user, isCreator);
+  const { participants } = useRoomEvents(roomId);
   const { peer, connections, remoteStreams, callPeer, disconnectAll } = useWebRTC(myStream);
   
+  // 3. 상대방 정보 및 스트림 특정
+  const otherUser = participants.find(p => p.uid !== user?.uid);
   const remotePeerId = otherUser?.uid;
   const remoteStream = remotePeerId ? remoteStreams[remotePeerId] : null;
 
@@ -110,81 +70,59 @@ export default function Room() {
   const callQuality = useCallQuality(remotePeerId ? connections[remotePeerId] : null);
 
 
-  // WebRTC: Call other user when they join
+  // 4. WebRTC 통화 연결 로직
   useEffect(() => {
-    if (peer && otherUser && !connections[otherUser.uid] && !remoteStreams[otherUser.uid]) {
-      if (user.uid > otherUser.uid) {
+    if (peer && otherUser && !connections[otherUser.uid] && user.uid > otherUser.uid) {
         callPeer(otherUser.uid);
-      }
     }
-  }, [peer, otherUser, connections, remoteStreams, callPeer, user?.uid]);
+  }, [peer, otherUser, connections, callPeer, user?.uid]);
   
-  // Leave Room Logic
-  const handleLeaveRoom = useCallback((immediate = false) => {
+  // 5. 통화 종료 로직
+  const handleLeaveRoom = useCallback(() => {
     if (isLeavingRef.current) return;
     isLeavingRef.current = true;
     
     const duration = callStartTimeRef.current ? Date.now() - callStartTimeRef.current : 0;
     
-    if (immediate) {
-        disconnectAll();
-        executeLeaveRoom(duration);
-        return;
-    }
-    
     setLeaveDetails({ duration });
     setIsLeaveModalOpen(true);
-  }, [executeLeaveRoom, disconnectAll, callStartTimeRef]);
+  }, [callStartTimeRef]);
 
-  if (isAuthLoading || isSettingsLoading || !user) {
+  // 6. 로딩 상태 렌더링
+  if (isAuthLoading || isSettingsLoading || !user || !myStream) {
     return <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '1.25rem'}}>Loading...</div>;
   }
-
+  
+  // 7. 메인 렌더링
   return (
     <div className={styles.container}>
       <GiftAnimation />
-      <header className={styles.header}>
-        <h1 className={styles.roomInfo}>Room: <span className={styles.roomId}>{roomId}</span></h1>
-        {remoteStream && <CallQualityIndicator quality={callQuality} />}
-        <button onClick={() => handleLeaveRoom(false)} className={styles.exitButton}>Leave Room</button>
-      </header>
-      <main className={styles.main}>
-        {myStream && (
-            <div className={styles.myVideoContainer}>
-                <Video stream={myStream} muted={true} />
-                <div className={styles.displayName}>{user.displayName} (You)</div>
-            </div>
-        )}
-        {remoteStream && otherUser ? (
-          <div className={styles.remoteVideoContainer}>
-            <Video 
-              stream={remoteStream} 
-              photoURL={otherUser.photoURL} 
-              displayName={otherUser.displayName} 
-            />
-          </div>
-        ) : (
-          <div className={styles.waitingMessage}>
-            <h2>Waiting for other participant...</h2>
-          </div>
-        )}
-      </main>
-      {myStream && (
-        <footer className={styles.footer}>
-          <Controls stream={myStream} />
-          {!isCreator && otherUser && (
-            <button onClick={() => setIsGiftModalOpen(true)} className={styles.giftButton}>
-              🎁
-            </button>
-          )}
-        </footer>
-      )}
+      <CallHeader
+        roomId={roomId}
+        quality={callQuality}
+        onLeave={handleLeaveRoom}
+        hasRemoteStream={!!remoteStream}
+      />
+      <VideoGrid
+        myStream={myStream}
+        remoteStream={remoteStream}
+        user={user}
+        otherUser={otherUser}
+      />
+      <CallFooter
+        stream={myStream}
+        isCreator={isCreator}
+        hasOtherUser={!!otherUser}
+        onGiftClick={() => setIsGiftModalOpen(true)}
+      />
+      
       {isGiftModalOpen && otherUser && (
         <GiftModal
           onClose={() => setIsGiftModalOpen(false)}
           onSendGift={(gift) => sendGift(user.uid, otherUser.uid, gift, roomId)}
         />
       )}
+
       <LeaveConfirmModal
         show={isLeaveModalOpen}
         onConfirm={() => {
