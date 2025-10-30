@@ -1,9 +1,13 @@
 // app/admin/page.js
 'use client';
 import { useState, useEffect } from 'react';
-// ✨ setDoc을 import 목록에 추가합니다.
 import { doc, updateDoc, runTransaction, addDoc, collection, getDoc, setDoc } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase';
+// ✨ [수정] storage 임포트
+import { firestore, storage } from '@/lib/firebase';
+// ✨ [추가] storage 관련 함수 임포트
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+// ✨ [추가] 이미지 처리 유틸 임포트
+import { processImageForUpload } from '@/lib/imageUtils'; 
 import { useAuth } from '@/hooks/useAuth';
 import { useAdminData } from '@/hooks/useAdminData';
 import useAppStore from '@/store/useAppStore';
@@ -30,11 +34,12 @@ export default function AdminPage() {
     isLoading: isAdminDataLoading,
   } = useAdminData();
 
-  // ... (기존 state 선언들은 동일)
   const [selectedUser, setSelectedUser] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [generalSearchTerm, setGeneralSearchTerm] = useState('');
   const [creatorSearchTerm, setCreatorSearchTerm] = useState('');
+  const [creatorGenderFilter, setCreatorGenderFilter] = useState('all');
+  const [generalGenderFilter, setGeneralGenderFilter] = useState('all');
   const [historySearchTerm, setHistorySearchTerm] = useState('');
   const [historySearchFilter, setHistorySearchFilter] = useState('all');
   const [coinHistorySearchTerm, setCoinHistorySearchTerm] = useState('');
@@ -58,7 +63,9 @@ export default function AdminPage() {
     historySearchTerm,
     historySearchFilter,
     coinHistorySearchTerm,
-    coinHistoryFilter
+    coinHistoryFilter,
+    creatorGenderFilter,
+    generalGenderFilter
   );
 
   const generalUsersPagination = usePagination(filteredGeneralUsers, 10);
@@ -86,7 +93,7 @@ export default function AdminPage() {
   useEffect(() => {
     generalUsersPagination.setCurrentPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [generalSearchTerm, creatorSearchTerm]);
+  }, [generalSearchTerm, creatorSearchTerm, creatorGenderFilter, generalGenderFilter]);
 
   const handleSaveSettings = async (newSettings) => {
     if (
@@ -108,7 +115,6 @@ export default function AdminPage() {
     const userRef = doc(firestore, 'users', member.uid);
     const newIsCreatorStatus = !member.isCreator;
 
-    // ✨ [수정] 크리에이터로 지정할 때 totalCallTime 필드를 0으로 초기화
     const dataToUpdate = { isCreator: newIsCreatorStatus };
     if (newIsCreatorStatus && typeof member.totalCallTime === 'undefined') {
       dataToUpdate.totalCallTime = 0;
@@ -126,6 +132,67 @@ export default function AdminPage() {
       'success'
     );
   };
+  
+  const handleUpdateGender = async (member, newGender) => {
+    const userRef = doc(firestore, 'users', member.uid);
+    const dataToUpdate = {
+      gender: newGender === 'unset' ? null : newGender
+    };
+    
+    try {
+      await setDoc(userRef, dataToUpdate, { merge: true });
+
+      const updatedUser = { ...member, ...dataToUpdate };
+      
+      setUsersWithRoles((prevUsers) =>
+        prevUsers.map((u) => (u.uid === member.uid ? updatedUser : u))
+      );
+      setSelectedUser(updatedUser);
+      
+      showToast(
+        `${member.displayName || '해당 유저'}님의 성별이 변경되었습니다.`,
+        'success'
+      );
+    } catch (error) {
+      showToast('성별 업데이트에 실패했습니다.', 'error');
+      console.error("Failed to update gender:", error);
+    }
+  };
+
+  // ✨ [추가] 관리자용 아바타 업데이트 핸들러
+  const handleUpdateAvatar = async (member, avatarFile) => {
+    if (!avatarFile) return;
+
+    showToast('새 프로필 사진을 업로드 중입니다...', 'info');
+    try {
+        // 1. 이미지 처리
+        const processedImageBlob = await processImageForUpload(avatarFile, 400); // 400px로 리사이즈
+        // 2. Storage 참조 생성
+        const avatarRef = storageRef(storage, `avatars/${member.uid}`);
+        // 3. 파일 업로드
+        const snapshot = await uploadBytes(avatarRef, processedImageBlob);
+        // 4. 다운로드 URL 받기
+        const newPhotoURL = await getDownloadURL(snapshot.ref);
+
+        // 5. Firestore 'users' 문서 업데이트
+        const userDocRef = doc(firestore, 'users', member.uid);
+        await setDoc(userDocRef, { photoURL: newPhotoURL }, { merge: true });
+
+        // 6. 로컬 상태 업데이트
+        const updatedUser = { ...member, photoURL: newPhotoURL };
+        setUsersWithRoles((prevUsers) =>
+            prevUsers.map((u) => (u.uid === member.uid ? updatedUser : u))
+        );
+        setSelectedUser(updatedUser); // 모달 내부 정보 갱신
+        
+        showToast('프로필 사진이 성공적으로 변경되었습니다.', 'success');
+    } catch (error) {
+        console.error("Failed to update avatar by admin:", error);
+        showToast('사진 변경에 실패했습니다.', 'error');
+        // 에러를 throw하여 모달의 isUploadingAvatar 상태를 false로 돌릴 수 있게 함
+        throw error; 
+    }
+  };
 
   const handleUpdateCoins = async (member, amount) => {
     const userRef = doc(firestore, 'users', member.uid);
@@ -135,7 +202,6 @@ export default function AdminPage() {
       await runTransaction(firestore, async (transaction) => {
         const userDoc = await transaction.get(userRef);
         if (!userDoc.exists()) {
-          // 문서가 없으면 생성
           transaction.set(userRef, { coins: Math.max(0, amount) });
           finalAmount = Math.max(0, amount);
           return;
@@ -191,8 +257,7 @@ export default function AdminPage() {
         if (userDoc.exists()) {
           transaction.update(userCoinRef, { coins: currentCoins + amount });
         } else {
-          // 해당 유저 문서가 없을 경우 새로 생성
-          transaction.set(userCoinRef, { 
+          transaction.set(userDocRef, { 
             uid: userId,
             displayName: userName,
             email: userEmail,
@@ -247,6 +312,8 @@ export default function AdminPage() {
           onClose={() => setIsModalOpen(false)}
           onUpdateRole={handleToggleCreator}
           onUpdateCoins={handleUpdateCoins}
+          onUpdateGender={handleUpdateGender}
+          onUpdateAvatar={handleUpdateAvatar} // ✨ [추가]
         />
       )}
 
@@ -314,7 +381,7 @@ export default function AdminPage() {
           <MembersTab
             creatorUsers={filteredCreatorUsers}
             generalUsers={generalUsersPagination.currentUsers}
-            totalGeneralUsers={filteredGeneralUsers} /* ✨ [추가] */
+            totalGeneralUsers={filteredGeneralUsers}
             creatorSearchTerm={creatorSearchTerm}
             setCreatorSearchTerm={setCreatorSearchTerm}
             generalSearchTerm={generalSearchTerm}
@@ -324,6 +391,10 @@ export default function AdminPage() {
               setIsModalOpen(true);
             }}
             pagination={generalUsersPagination}
+            creatorGenderFilter={creatorGenderFilter}
+            setCreatorGenderFilter={setCreatorGenderFilter}
+            generalGenderFilter={generalGenderFilter}
+            setGeneralGenderFilter={setGeneralGenderFilter}
           />
         )}
 
@@ -357,3 +428,4 @@ export default function AdminPage() {
     </div>
   );
 }
+

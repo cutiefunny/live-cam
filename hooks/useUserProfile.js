@@ -3,24 +3,31 @@ import { updateProfile } from "firebase/auth";
 import { doc, updateDoc, getDoc, arrayUnion, arrayRemove, writeBatch } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, storage, firestore } from '@/lib/firebase';
-import { processImageForUpload } from '@/lib/imageUtils'; // ✨ [추가]
+import { processImageForUpload } from '@/lib/imageUtils';
 import useAppStore from '@/store/useAppStore';
 
 export function useUserProfile() {
+  // ✨ [수정] setUserGender 제거 (useAuth가 Firestore 리스너로 자동 갱신)
   const { user, setUser, showToast } = useAppStore();
 
-  const updateUserProfile = async (newDisplayName, newAvatarFile) => {
+  // ✨ [수정] newGender 인수 추가
+  const updateUserProfile = async (newDisplayName, newAvatarFile, newGender) => {
     if (!user) return;
 
     let newPhotoURL = user.photoURL;
+    // ✨ [수정] dataToUpdate 객체로 관리
+    const dataToUpdate = {
+      displayName: newDisplayName,
+      gender: newGender === 'unset' ? null : newGender,
+    };
 
     try {
       if (newAvatarFile) {
-        // ✨ [수정] 이미지 처리 로직 추가
-        const processedImageBlob = await processImageForUpload(newAvatarFile, 400); // 아바타는 400px로 리사이즈
+        const processedImageBlob = await processImageForUpload(newAvatarFile, 400);
         const avatarRef = storageRef(storage, `avatars/${user.uid}`);
         const snapshot = await uploadBytes(avatarRef, processedImageBlob);
         newPhotoURL = await getDownloadURL(snapshot.ref);
+        dataToUpdate.photoURL = newPhotoURL; // ✨ [추가]
       }
 
       await updateProfile(auth.currentUser, {
@@ -29,11 +36,10 @@ export function useUserProfile() {
       });
 
       const userDocRef = doc(firestore, 'users', user.uid);
-      await updateDoc(userDocRef, {
-        displayName: newDisplayName,
-        photoURL: newPhotoURL,
-      });
+      // ✨ [수정] dataToUpdate 객체로 Firestore 문서 업데이트
+      await updateDoc(userDocRef, dataToUpdate);
 
+      // ✨ [수정] 로컬 Auth 객체만 업데이트 (Firestore 데이터는 useAuth 리스너가 갱신)
       setUser({ ...user, displayName: newDisplayName, photoURL: newPhotoURL });
 
     } catch (error) {

@@ -72,6 +72,11 @@
 /* --- 로그인 페이지 스타일 --- */
 .loginContainer {
   text-align: center;
+  width: 100%; /* ✨ [추가] */
+  max-width: 400px; /* ✨ [추가] */
+  display: flex; /* ✨ [추가] */
+  flex-direction: column; /* ✨ [추가] */
+  align-items: center; /* ✨ [추가] */
 }
 
 .loginTitle {
@@ -128,6 +133,12 @@
 }
 .createButton:hover {
   background-color: #4338ca;
+}
+/* ✨ [추가] 비활성화 버튼 스타일 */
+.createButton:disabled {
+  background-color: #4b5563;
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .goOfflineButton {
@@ -341,3 +352,74 @@
   margin-top: 0.5rem;
   color: #9ca3af;
 }
+
+/* ✨ [추가] 매칭 슬라이더 스타일 */
+.matchingContainer {
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.75rem;
+}
+
+.swiperContainer {
+  width: 100%;
+  height: 400px;
+}
+
+.swiperSlide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #1f2937;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.swiperImage {
+  width: 100%;
+  height: 100%;
+  /* ✨ [수정] object-fit을 'scale-down'으로 변경 */
+  object-fit: scale-down;
+  display: block;
+}
+
+/* ✨ [추가] 성별 미설정 시 블러 및 CTA */
+.blurContainer {
+  filter: blur(8px);
+  pointer-events: none;
+  user-select: none;
+}
+
+.genderCtaOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.5);
+  text-align: center;
+  padding: 1rem;
+  border-radius: 0.75rem;
+}
+
+.ctaButton {
+  background-color: #4f46e5;
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  margin-top: 1rem;
+  border: none;
+  cursor: pointer;
+}
+.ctaButton:hover {
+  background-color: #4338ca;
+}
+

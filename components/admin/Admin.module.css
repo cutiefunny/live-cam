@@ -92,6 +92,7 @@
   color: #a5b4fc;
   cursor: pointer;
   transition: background-color 0.2s, color 0.2s;
+  width: 100%; /* ✨ [추가] 버튼 너비 100% */
 }
 
 .actionButton:hover {
@@ -219,7 +220,7 @@
 .modalBody {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 1.5rem; /* ✨ [수정] gap 조정 */
 }
 
 .userInfoSection {
@@ -231,6 +232,24 @@
   height: 80px;
   border-radius: 50%;
   margin-bottom: 1rem;
+  object-fit: cover; /* ✨ [추가] */
+}
+
+/* ✨ [추가] 모달 내 아바타 변경 버튼 */
+.avatarEditButtonModal {
+  padding: 0.5rem 1rem;
+  background-color: #4f46e5;
+  color: white;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  max-width: 150px;
+  margin: 0 auto;
+}
+.avatarEditButtonModal:hover {
+  background-color: #4338ca;
 }
 
 .userInfoSection h3 {
@@ -399,6 +418,13 @@
   background-color: #b91c1c;
 }
 
+/* ✨ [추가] 성별 관리 모달 스타일 */
+.genderControl {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 /* ✨ [추가] 모바일 반응형 스타일 */
 @media (max-width: 768px) {
   .container {
@@ -434,6 +460,12 @@
   .searchContainer {
     flex-direction: column;
     align-items: stretch;
+  }
+  
+  /* ✨ [수정] 모바일 searchContainer 내부 select/input 너비 */
+  .searchContainer .searchFilter,
+  .searchContainer .searchInput {
+    width: 100%;
   }
 
   .dashboardGrid {

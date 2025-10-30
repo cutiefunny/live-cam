@@ -1,16 +1,19 @@
 // components/ProfileModal.js
 'use client';
 import { useState, useRef } from 'react';
-import { useRouter } from 'next/navigation'; // ✨ [추가]
+import { useRouter } from 'next/navigation';
 import useAppStore from '@/store/useAppStore';
 import styles from '@/app/Home.module.css';
 
 export default function ProfileModal({ user, onClose, onUpdateProfile, onLogout }) {
-    const router = useRouter(); // ✨ [추가]
-    const { showToast, isCreator } = useAppStore();
+    const router = useRouter();
+    // ✨ [수정] userGender 추가
+    const { showToast, isCreator, userGender } = useAppStore();
     const [displayName, setDisplayName] = useState(user.displayName || '');
     const [newAvatarFile, setNewAvatarFile] = useState(null);
     const [avatarPreview, setAvatarPreview] = useState(user.photoURL);
+    // ✨ [추가] 성별 state
+    const [gender, setGender] = useState(userGender || 'unset');
     const [isSaving, setIsSaving] = useState(false);
     const fileInputRef = useRef(null);
 
@@ -37,7 +40,8 @@ export default function ProfileModal({ user, onClose, onUpdateProfile, onLogout 
         }
         setIsSaving(true);
         try {
-            await onUpdateProfile(displayName, newAvatarFile);
+            // ✨ [수정] gender 값을 onUpdateProfile로 전달
+            await onUpdateProfile(displayName, newAvatarFile, gender);
             showToast('프로필이 성공적으로 업데이트되었습니다.', 'success');
             onClose();
         } catch (error) {
@@ -47,7 +51,6 @@ export default function ProfileModal({ user, onClose, onUpdateProfile, onLogout 
         }
     };
 
-    // ✨ [추가] 내 프로필 페이지로 이동하는 함수
     const goToMyProfile = () => {
         router.push(`/creator/${user.uid}`);
         onClose();
@@ -85,9 +88,23 @@ export default function ProfileModal({ user, onClose, onUpdateProfile, onLogout 
                             className={styles.profileInput}
                         />
                     </div>
+
+                    {/* ✨ [추가] 성별 선택 드롭다운 */}
+                    <div className={styles.profileInputGroup}>
+                        <label htmlFor="gender">성별</label>
+                        <select
+                            id="gender"
+                            value={gender}
+                            onChange={(e) => setGender(e.target.value)}
+                            className={styles.profileInput} // 기존 스타일 재사용
+                        >
+                            <option value="unset">선택 안함</option>
+                            <option value="male">남성</option>
+                            <option value="female">여성</option>
+                        </select>
+                    </div>
                 </div>
 
-                {/* ✨ [수정] 크리에이터인 경우에만 '내 프로필' 버튼 표시 */}
                 {isCreator && (
                     <button onClick={goToMyProfile} className={styles.myProfileButton}>
                         내 크리에이터 프로필

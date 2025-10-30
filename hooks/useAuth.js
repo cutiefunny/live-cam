@@ -2,12 +2,13 @@
 import { useEffect } from 'react';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as firebaseSignOut } from "firebase/auth";
 import { ref, remove, get } from 'firebase/database';
-import { doc, onSnapshot } from 'firebase/firestore'; // ✨ [추가]
-import { auth, database, firestore } from '@/lib/firebase'; // ✨ [수정]
+import { doc, onSnapshot } from 'firebase/firestore'; // ✨ [수정]
+import { auth, database, firestore } from '@/lib/firebase';
 import useAppStore from '@/store/useAppStore';
 
 export function useAuth() {
-  const { setUser, setIsCreator, setIsAuthLoading, setFollowing } = useAppStore();
+  // ✨ [수정] setUserGender 추가
+  const { setUser, setIsCreator, setIsAuthLoading, setFollowing, setUserGender } = useAppStore();
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -15,7 +16,6 @@ export function useAuth() {
       setIsAuthLoading(false);
 
       if (currentUser) {
-        // ✨ [수정 시작] Firestore에서 사용자 데이터 실시간 구독
         const userDocRef = doc(firestore, 'users', currentUser.uid);
         
         const unsubscribeFirestore = onSnapshot(userDocRef, (doc) => {
@@ -23,9 +23,11 @@ export function useAuth() {
             const userData = doc.data();
             setIsCreator(userData.isCreator || false);
             setFollowing(userData.following || []);
+            setUserGender(userData.gender || null); // ✨ [추가]
           } else {
             setIsCreator(false);
             setFollowing([]);
+            setUserGender(null); // ✨ [추가]
           }
         });
 
@@ -33,16 +35,16 @@ export function useAuth() {
         return () => {
           unsubscribeFirestore();
         };
-        // ✨ [수정 끝]
       } else {
         // User is logged out
         setIsCreator(false);
         setFollowing([]);
+        setUserGender(null); // ✨ [추가]
       }
     });
 
     return () => unsubscribeAuth();
-  }, [setUser, setIsAuthLoading, setIsCreator, setFollowing]);
+  }, [setUser, setIsAuthLoading, setIsCreator, setFollowing, setUserGender]); // ✨ [수정] 의존성 배열
 
   const signIn = async () => {
     const provider = new GoogleAuthProvider();

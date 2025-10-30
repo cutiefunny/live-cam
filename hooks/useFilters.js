@@ -1,8 +1,28 @@
 // hooks/useFilters.js
 import { useMemo } from 'react';
 
-export function useFilters(usersWithRoles, callHistory, coinHistory, creatorSearchTerm, generalSearchTerm, historySearchTerm, historySearchFilter, coinHistorySearchTerm, coinHistoryFilter) {
+// ✨ [수정] 성별 필터 인수 추가
+export function useFilters(
+  usersWithRoles,
+  callHistory,
+  coinHistory,
+  creatorSearchTerm,
+  generalSearchTerm,
+  historySearchTerm,
+  historySearchFilter,
+  coinHistorySearchTerm,
+  coinHistoryFilter,
+  creatorGenderFilter, // ✨ [추가]
+  generalGenderFilter  // ✨ [추가]
+) {
   
+  // ✨ [추가] 성별 필터링 헬퍼 함수
+  const filterByGender = (user, filter) => {
+    if (filter === 'all') return true;
+    if (filter === 'unset') return !user.gender; // gender 필드가 없거나 null, undefined인 경우
+    return user.gender === filter;
+  };
+
   const filteredCreatorUsers = useMemo(() => {
     // 1. 크리에이터별 총 통화 시간 계산
     const callDurations = {};
@@ -15,14 +35,15 @@ export function useFilters(usersWithRoles, callHistory, coinHistory, creatorSear
       callDurations[calleeId] += duration;
     });
 
-    // 2. 검색어 필터링 및 통화 시간 데이터 추가
+    // 2. 검색어 및 성별 필터링, 통화 시간 데이터 추가
     const creators = usersWithRoles
       .filter(user =>
         user.isCreator &&
-        (
+        ( // 이름 또는 이메일 검색
           user.displayName?.toLowerCase().includes(creatorSearchTerm.toLowerCase()) ||
           user.email?.toLowerCase().includes(creatorSearchTerm.toLowerCase())
-        )
+        ) && 
+        filterByGender(user, creatorGenderFilter) // ✨ [추가] 성별 필터 적용
       )
       .map(user => ({
         ...user,
@@ -33,7 +54,7 @@ export function useFilters(usersWithRoles, callHistory, coinHistory, creatorSear
     creators.sort((a, b) => b.totalDuration - a.totalDuration);
     
     return creators;
-  }, [usersWithRoles, callHistory, creatorSearchTerm]);
+  }, [usersWithRoles, callHistory, creatorSearchTerm, creatorGenderFilter]); // ✨ [추가] 의존성 배열
 
   const filteredGeneralUsers = useMemo(() => {
     // 1. 사용자별 총 충전 코인 합계 계산
@@ -47,14 +68,15 @@ export function useFilters(usersWithRoles, callHistory, coinHistory, creatorSear
       }
     });
 
-    // 2. 검색어 필터링 및 충전 합계 데이터 추가
+    // 2. 검색어 및 성별 필터링, 충전 합계 데이터 추가
     const generalUsers = usersWithRoles
       .filter(user =>
         !user.isCreator &&
-        (
+        ( // 이름 또는 이메일 검색
           user.displayName?.toLowerCase().includes(generalSearchTerm.toLowerCase()) ||
           user.email?.toLowerCase().includes(generalSearchTerm.toLowerCase())
-        )
+        ) &&
+        filterByGender(user, generalGenderFilter) // ✨ [추가] 성별 필터 적용
       )
       .map(user => ({
         ...user,
@@ -65,7 +87,7 @@ export function useFilters(usersWithRoles, callHistory, coinHistory, creatorSear
     generalUsers.sort((a, b) => b.totalCharged - a.totalCharged);
 
     return generalUsers;
-  }, [usersWithRoles, coinHistory, generalSearchTerm]);
+  }, [usersWithRoles, coinHistory, generalSearchTerm, generalGenderFilter]); // ✨ [추가] 의존성 배열
 
   const filteredCallHistory = useMemo(() => {
     return callHistory.filter(call => {
