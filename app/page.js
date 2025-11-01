@@ -86,22 +86,19 @@ export default function Home() {
             </p>
           </div>
 
-          {/* ✨ [추가] 매칭 슬라이더 섹션 */}
           <div className={styles.matchingContainer}>
-            {/* 성별 미설정 시 CTA 오버레이 */}
             {needsGenderSetup && (
               <div className={styles.genderCtaOverlay}>
-                <p>프로필에서 성별을 설정하고<br/>추천 상대를 확인해보세요!</p>
-                <button 
-                  className={styles.ctaButton} 
-                  onClick={openProfileModal}
+                <p>만남을 신청하고<br/>추천 상대를 확인해보세요!</p>
+                <a
+                  className={styles.ctaButton}
+                  href="/apply"
                 >
-                  성별 설정하기
-                </button>
+                  만남 신청하기
+                </a>
               </div>
             )}
-            
-            {/* Swiper 슬라이더 (성별 미설정 시 블러 처리) */}
+
             <div className={needsGenderSetup ? styles.blurContainer : ''}>
               {isMatchingLoading ? (
                 <div className={styles.swiperContainer} style={{display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
@@ -167,7 +164,7 @@ export default function Home() {
   return (
     <main className={styles.main}>
       <div className={styles.loginContainer}>
-          <h1 className={styles.loginTitle}>취향캠톡</h1>
+          <h1 className={styles.loginTitle}>취향만남</h1>
           <p className={styles.loginDescription}>관심사 기반 영상 채팅을 시작해보세요.</p>
           <button onClick={signIn} className={styles.loginButton}>
               Google 계정으로 시작하기

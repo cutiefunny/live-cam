@@ -22,7 +22,7 @@ export default function ManualPage() {
           <h2 className={styles.sectionTitle}>1. 시작하기</h2>
           <div className={styles.card}>
             <h3>1.1. 로그인</h3>
-            <p>Google 계정을 사용하여 간편하게 로그인하고 취향캠톡의 모든 기능을 이용할 수 있습니다.</p>
+            <p>Google 계정을 사용하여 간편하게 로그인하고 취향만남의 모든 기능을 이용할 수 있습니다.</p>
           </div>
           <div className={styles.card}>
             <h3>1.2. 프로필 설정</h3>

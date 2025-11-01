@@ -6,14 +6,17 @@ export function useFilters(
   usersWithRoles,
   callHistory,
   coinHistory,
+  applicants, // ✨ [추가]
   creatorSearchTerm,
   generalSearchTerm,
   historySearchTerm,
   historySearchFilter,
   coinHistorySearchTerm,
   coinHistoryFilter,
-  creatorGenderFilter, // ✨ [추가]
-  generalGenderFilter  // ✨ [추가]
+  applicantSearchTerm, // ✨ [추가]
+  creatorGenderFilter, 
+  generalGenderFilter, 
+  applicantGenderFilter // ✨ [추가]
 ) {
   
   // ✨ [추가] 성별 필터링 헬퍼 함수
@@ -118,10 +121,24 @@ export function useFilters(
     });
   }, [coinHistory, coinHistorySearchTerm, coinHistoryFilter]);
 
+  // ✨ [추가] 신청자 목록 필터링
+  const filteredApplicants = useMemo(() => {
+    return applicants.filter(applicant => {
+      const searchTermLower = applicantSearchTerm.toLowerCase();
+      const nameMatch = applicant.name?.toLowerCase().includes(searchTermLower);
+      const contactMatch = applicant.contact?.replace(/-/g, '').includes(searchTermLower.replace(/-/g, ''));
+      
+      const genderMatch = filterByGender(applicant, applicantGenderFilter);
+
+      return (nameMatch || contactMatch) && genderMatch;
+    });
+  }, [applicants, applicantSearchTerm, applicantGenderFilter]);
+
   return {
     filteredCreatorUsers,
     filteredGeneralUsers,
     filteredCallHistory,
     filteredCoinHistory,
+    filteredApplicants, // ✨ [추가]
   };
 }

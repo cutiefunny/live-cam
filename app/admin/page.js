@@ -19,6 +19,9 @@ import MembersTab from './tabs/MembersTab';
 import HistoryTab from './tabs/HistoryTab';
 import CoinsTab from './tabs/CoinsTab';
 import SettingsTab from './tabs/SettingsTab';
+import ApplicantTab from './tabs/ApplicantTab';
+import ApplicantDetailModal from '@/components/admin/ApplicantDetailModal';
+
 import styles from '@/components/admin/Admin.module.css';
 
 export default function AdminPage() {
@@ -31,6 +34,7 @@ export default function AdminPage() {
     coinHistory,
     dashboardData,
     chargeRequests,
+    applicants, // ✨ [추가]
     isLoading: isAdminDataLoading,
   } = useAdminData();
 
@@ -47,6 +51,12 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [appSettings, setAppSettings] = useState(null);
 
+  // ✨ [추가] 신청자 탭 관련 state
+  const [applicantSearchTerm, setApplicantSearchTerm] = useState('');
+  const [applicantGenderFilter, setApplicantGenderFilter] = useState('all');
+  const [selectedApplicant, setSelectedApplicant] = useState(null);
+  const [isApplicantModalOpen, setIsApplicantModalOpen] = useState(false);
+
   const showToast = useAppStore((state) => state.showToast);
 
     const {
@@ -54,18 +64,22 @@ export default function AdminPage() {
     filteredGeneralUsers,
     filteredCallHistory,
     filteredCoinHistory,
+    filteredApplicants, // ✨ [추가]
   } = useFilters(
     usersWithRoles,
     callHistory,
     coinHistory,
+    applicants, // ✨ [추가]
     creatorSearchTerm,
     generalSearchTerm,
     historySearchTerm,
     historySearchFilter,
     coinHistorySearchTerm,
     coinHistoryFilter,
+    applicantSearchTerm, // ✨ [추가]
     creatorGenderFilter,
-    generalGenderFilter
+    generalGenderFilter,
+    applicantGenderFilter // ✨ [추가]
   );
 
   const generalUsersPagination = usePagination(filteredGeneralUsers, 10);
@@ -75,6 +89,8 @@ export default function AdminPage() {
     chargeRequests,
     5
   );
+  // ✨ [추가] 신청자 페이지네이션
+  const applicantPagination = usePagination(filteredApplicants, 10);
 
   useEffect(() => {
     getDoc(doc(firestore, 'settings', 'live')).then((snapshot) => {
@@ -92,8 +108,16 @@ export default function AdminPage() {
 
   useEffect(() => {
     generalUsersPagination.setCurrentPage(1);
+    applicantPagination.setCurrentPage(1); // ✨ [추가]
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [generalSearchTerm, creatorSearchTerm, creatorGenderFilter, generalGenderFilter]);
+  }, [
+    generalSearchTerm, 
+    creatorSearchTerm, 
+    creatorGenderFilter, 
+    generalGenderFilter, 
+    applicantSearchTerm, // ✨ [추가]
+    applicantGenderFilter // ✨ [추가]
+  ]);
 
   const handleSaveSettings = async (newSettings) => {
     if (
@@ -300,6 +324,37 @@ export default function AdminPage() {
     }
   };
 
+  // ✨ [추가] 신청자 상세정보 모달 핸들러
+  const handleViewApplicantDetails = (applicant) => {
+    setSelectedApplicant(applicant);
+    setIsApplicantModalOpen(true); // ✨ [수정] 모달 열기
+  };
+
+  // ✨ [추가] 신청자 승인 핸들러
+  const handleApproveApplicant = async (applicant) => {
+    const applicantRef = doc(firestore, 'applications', applicant.id);
+    try {
+      await updateDoc(applicantRef, { status: 'approved' });
+      showToast(`${applicant.name}님의 신청을 승인했습니다.`, 'success');
+      // 데이터는 useAdminData의 onSnapshot에 의해 자동으로 갱신됩니다.
+    } catch (error) {
+      showToast('승인 처리에 실패했습니다.', 'error');
+      console.error(error);
+    }
+  };
+
+  // ✨ [추가] 신청자 거절 핸들러
+  const handleRejectApplicant = async (applicant) => {
+    const applicantRef = doc(firestore, 'applications', applicant.id);
+    try {
+      await updateDoc(applicantRef, { status: 'rejected' });
+      showToast(`${applicant.name}님의 신청을 거절했습니다.`, 'info');
+    } catch (error) {
+      showToast('거절 처리에 실패했습니다.', 'error');
+      console.error(error);
+    }
+  };
+
   if (isAdminDataLoading || !appSettings) {
     return <div className={styles.container}>Loading...</div>;
   }
@@ -317,6 +372,16 @@ export default function AdminPage() {
         />
       )}
 
+      {/* ✨ [추가] 신청자 상세 모달 (TODO: 컴포넌트 생성 필요) */}
+      {/*
+      {isApplicantModalOpen && (
+        <ApplicantDetailModal
+          applicant={selectedApplicant}
+          onClose={() => setIsApplicantModalOpen(false)}
+        />
+      )}
+      */}
+
       <div className={styles.tabNav}>
         <button
           className={`${styles.tabButton} ${
@@ -333,6 +398,15 @@ export default function AdminPage() {
           onClick={() => setActiveTab('members')}
         >
           회원 목록
+        </button>
+        {/* ✨ [추가] 신청자 탭 버튼 */}
+        <button
+          className={`${styles.tabButton} ${
+            activeTab === 'applicants' ? styles.active : ''
+          }`}
+          onClick={() => setActiveTab('applicants')}
+        >
+          신청자
         </button>
         <button
           className={`${styles.tabButton} ${
@@ -398,6 +472,28 @@ export default function AdminPage() {
           />
         )}
 
+        {/* ✨ [추가] 신청자 탭 컨텐츠 */}
+        {activeTab === 'applicants' && (
+          <ApplicantTab
+            applicants={filteredApplicants}
+            pagination={applicantPagination}
+            searchTerm={applicantSearchTerm}
+            setSearchTerm={setApplicantSearchTerm}
+            genderFilter={applicantGenderFilter}
+            setGenderFilter={setApplicantGenderFilter}
+            onViewDetails={handleViewApplicantDetails}
+            onApprove={handleApproveApplicant}
+            onReject={handleRejectApplicant}
+          />
+        )}
+
+        {isApplicantModalOpen && (
+          <ApplicantDetailModal
+            applicant={selectedApplicant}
+            onClose={() => setIsApplicantModalOpen(false)}
+          />
+        )}
+
         {activeTab === 'history' && (
           <HistoryTab
             callHistory={filteredCallHistory}
@@ -428,4 +524,3 @@ export default function AdminPage() {
     </div>
   );
 }
-

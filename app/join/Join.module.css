@@ -1,0 +1,135 @@
+/* app/join/Join.module.css */
+
+/* 기존 Home.module.css의 main 스타일과 유사하게 설정 */
+.main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem 1.5rem; /* 헤더가 없으므로 상단 패딩 조정 */
+}
+
+/* 로그인 컨테이너와 유사한 스타일 */
+.container {
+  width: 100%;
+  max-width: 450px;
+  padding: 2.5rem;
+  background-color: #1f2937; /* bg-gray-800 */
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+}
+
+.title {
+  font-size: 2rem;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.inputGroup {
+  display: flex;
+  flex-direction: column;
+}
+
+.inputGroup label {
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+  color: #d1d5db; /* text-gray-300 */
+}
+
+.input {
+  padding: 0.75rem 1rem;
+  border-radius: 0.375rem;
+  border: 1px solid #4b5563; /* border-gray-600 */
+  background-color: #374151; /* bg-gray-700 */
+  color: white;
+  font-size: 1rem;
+}
+
+.divider {
+  height: 1px;
+  background-color: #4b5563;
+  margin: 1rem 0;
+}
+
+.agreementContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.checkboxContainer,
+.checkboxContainerAll {
+  display: flex;
+  align-items: center;
+}
+
+.checkboxContainer input[type="checkbox"],
+.checkboxContainerAll input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin-right: 0.75rem;
+  cursor: pointer;
+}
+
+.checkboxLabel {
+  color: #d1d5db;
+  font-size: 0.9rem;
+}
+
+.checkboxLabelAll {
+  color: white;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.viewLink {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: #9ca3af;
+  text-decoration: underline;
+}
+
+.errorMessage {
+  color: #ef4444; /* text-red-500 */
+  text-align: center;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+.submitButton {
+  padding: 0.75rem 1.5rem;
+  background-color: #4f46e5; /* bg-indigo-600 */
+  border-radius: 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: white;
+  margin-top: 1.5rem;
+}
+.submitButton:hover:not(:disabled) {
+  background-color: #4338ca;
+}
+.submitButton:disabled {
+  background-color: #4b5563;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.loginLink {
+  margin-top: 2rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: #9ca3af;
+}
+.loginLink a {
+  color: #a5b4fc; /* text-indigo-300 */
+  text-decoration: underline;
+  font-weight: 500;
+}

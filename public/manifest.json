@@ -1,6 +1,6 @@
 {
-    "name": "취향캠톡",
-    "short_name": "취향캠톡",
+    "name": "취향만남",
+    "short_name": "취향만남",
     "description": "실시간 영상 채팅 서비스",
     "orientation": "portrait",
     "start_url": "/",

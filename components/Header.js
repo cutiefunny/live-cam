@@ -8,7 +8,7 @@ const Header = ({ user, userCoins, onAvatarClick, onCoinClick }) => {
   return (
     <header className={styles.header}>
       <div className={styles.headerContent}>
-        <h1 className={styles.logo}>취향캠톡</h1>
+        <h1 className={styles.logo}>취향만남</h1>
         {user && (
           <div className={styles.userInfoHeader}>
             <Link href="/chat" className={styles.chatIcon}>

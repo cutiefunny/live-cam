@@ -12,7 +12,8 @@ export function useAdminData() {
   const [usersWithRoles, setUsersWithRoles] = useState([]);
   const [coinHistory, setCoinHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [chargeRequests, setChargeRequests] = useState([]); // ✨ [분리]
+  const [chargeRequests, setChargeRequests] = useState([]); 
+  const [applicants, setApplicants] = useState([]); // ✨ [추가] 신청자 목록 state
 
   const [dashboardData, setDashboardData] = useState({
     newUsers: [],
@@ -49,10 +50,18 @@ export function useAdminData() {
       setChargeRequests(pendingRequests);
     });
 
+    // ✨ [추가] 'applications' 컬렉션에서 'pending' 상태인 신청서 구독 (createdAt 기준으로 오름차순)
+    const applicationsQuery = query(collection(firestore, 'applications'), where('status', '==', 'pending'), orderBy('createdAt', 'asc'));
+    const unsubscribeApplications = onSnapshot(applicationsQuery, (snapshot) => {
+      const pendingApplicants = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setApplicants(pendingApplicants);
+    });
+
     return () => {
       unsubscribeHistory();
       unsubscribeCoinHistory();
       unsubscribeRequests();
+      unsubscribeApplications(); // ✨ [추가] 구독 해제
     };
   }, []);
   // ✨ [수정 끝]
@@ -143,7 +152,8 @@ export function useAdminData() {
     usersWithRoles, 
     setUsersWithRoles,
     coinHistory,
-    chargeRequests, // ✨ [추가]
+    chargeRequests, 
+    applicants, // ✨ [추가]
     dashboardData,
     isLoading: isUsersLoading || isLoading 
   };
