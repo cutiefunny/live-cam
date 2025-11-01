@@ -426,3 +426,30 @@
   background-color: #4338ca;
 }
 
+.fortuneContainer {
+  margin-top: 2rem;
+  width: 100%;
+  max-width: 400px;
+  background-color: #1f2937; /* bg-gray-800 */
+  border: 1px solid #374151; /* border-gray-700 */
+  border-radius: 0.5rem;
+  padding: 1.25rem; /* 패딩 약간 증가 */
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.fortuneTitle {
+  margin-top: 0;
+  margin-bottom: 0.75rem; /* 12px */
+  font-size: 1rem; /* 16px */
+  font-weight: 600;
+  color: #e5e7eb; /* text-gray-200 */
+}
+
+.fortuneContent {
+  margin: 0;
+  font-size: 0.95rem; /* 15px */
+  color: #d1d5db; /* text-gray-300 */
+  line-height: 1.6;
+  white-space: pre-wrap; /* API 응답의 줄바꿈을 유지합니다 */
+}
