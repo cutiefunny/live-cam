@@ -3,9 +3,11 @@ export const createAuthSlice = (set) => ({
   user: null,
   isCreator: false,
   isAuthLoading: true,
-  userGender: null, // ✨ [추가]
+  userGender: null,
+  applicationStatus: null, // ✨ [추가]
   setUser: (user) => set({ user }),
   setIsCreator: (isCreator) => set({ isCreator }),
   setIsAuthLoading: (isLoading) => set({ isAuthLoading: isLoading }),
-  setUserGender: (gender) => set({ userGender: gender }), // ✨ [추가]
+  setUserGender: (gender) => set({ userGender: gender }),
+  setApplicationStatus: (status) => set({ applicationStatus: status }), // ✨ [추가]
 });

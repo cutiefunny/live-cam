@@ -2,11 +2,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { doc, updateDoc, runTransaction, addDoc, collection, getDoc, setDoc } from 'firebase/firestore';
-// ✨ [수정] storage 임포트
 import { firestore, storage } from '@/lib/firebase';
-// ✨ [추가] storage 관련 함수 임포트
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-// ✨ [추가] 이미지 처리 유틸 임포트
 import { processImageForUpload } from '@/lib/imageUtils'; 
 import { useAuth } from '@/hooks/useAuth';
 import { useAdminData } from '@/hooks/useAdminData';
@@ -19,7 +16,6 @@ import MembersTab from './tabs/MembersTab';
 import HistoryTab from './tabs/HistoryTab';
 import CoinsTab from './tabs/CoinsTab';
 import SettingsTab from './tabs/SettingsTab';
-import ApplicantTab from './tabs/ApplicantTab';
 import ApplicantDetailModal from '@/components/admin/ApplicantDetailModal';
 
 import styles from '@/components/admin/Admin.module.css';
@@ -34,7 +30,7 @@ export default function AdminPage() {
     coinHistory,
     dashboardData,
     chargeRequests,
-    applicants, // ✨ [추가]
+    // applicants, // (제거된 상태 유지)
     isLoading: isAdminDataLoading,
   } = useAdminData();
 
@@ -42,6 +38,15 @@ export default function AdminPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [generalSearchTerm, setGeneralSearchTerm] = useState('');
   const [creatorSearchTerm, setCreatorSearchTerm] = useState('');
+  
+  // ✨ [수정] 'submitted' (대시보드용) state
+  const [applicantSearchTerm, setApplicantSearchTerm] = useState('');
+  const [applicantGenderFilter, setApplicantGenderFilter] = useState('all');
+  
+  // ✨ [추가] 'approved' (멤버탭용) state
+  const [approvedSearchTerm, setApprovedSearchTerm] = useState('');
+  const [approvedGenderFilter, setApprovedGenderFilter] = useState('all');
+  
   const [creatorGenderFilter, setCreatorGenderFilter] = useState('all');
   const [generalGenderFilter, setGeneralGenderFilter] = useState('all');
   const [historySearchTerm, setHistorySearchTerm] = useState('');
@@ -51,9 +56,6 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [appSettings, setAppSettings] = useState(null);
 
-  // ✨ [추가] 신청자 탭 관련 state
-  const [applicantSearchTerm, setApplicantSearchTerm] = useState('');
-  const [applicantGenderFilter, setApplicantGenderFilter] = useState('all');
   const [selectedApplicant, setSelectedApplicant] = useState(null);
   const [isApplicantModalOpen, setIsApplicantModalOpen] = useState(false);
 
@@ -64,22 +66,24 @@ export default function AdminPage() {
     filteredGeneralUsers,
     filteredCallHistory,
     filteredCoinHistory,
-    filteredApplicants, // ✨ [추가]
+    filteredSubmittedUsers, // ✨ 'submitted' (대시보드용)
+    filteredApprovedUsers,  // ✨ 'approved' (멤버탭용)
   } = useFilters(
     usersWithRoles,
     callHistory,
     coinHistory,
-    applicants, // ✨ [추가]
     creatorSearchTerm,
     generalSearchTerm,
     historySearchTerm,
     historySearchFilter,
     coinHistorySearchTerm,
     coinHistoryFilter,
-    applicantSearchTerm, // ✨ [추가]
-    creatorGenderFilter,
-    generalGenderFilter,
-    applicantGenderFilter // ✨ [추가]
+    applicantSearchTerm,   // ✨ 'submitted'
+    creatorGenderFilter, 
+    generalGenderFilter, 
+    applicantGenderFilter, // ✨ 'submitted'
+    approvedSearchTerm,    // ✨ 'approved'
+    approvedGenderFilter     // ✨ 'approved'
   );
 
   const generalUsersPagination = usePagination(filteredGeneralUsers, 10);
@@ -89,8 +93,12 @@ export default function AdminPage() {
     chargeRequests,
     5
   );
-  // ✨ [추가] 신청자 페이지네이션
-  const applicantPagination = usePagination(filteredApplicants, 10);
+  
+  // ✨ [수정] 'approved' (멤버탭용) 페이지네이션
+  const applicantUsersPagination = usePagination(filteredApprovedUsers, 10);
+  
+  // ✨ [수정] 'submitted' (대시보드용) 페이지네이션
+  const dashboardApplicantsPagination = usePagination(filteredSubmittedUsers, 5);
 
   useEffect(() => {
     getDoc(doc(firestore, 'settings', 'live')).then((snapshot) => {
@@ -108,15 +116,18 @@ export default function AdminPage() {
 
   useEffect(() => {
     generalUsersPagination.setCurrentPage(1);
-    applicantPagination.setCurrentPage(1); // ✨ [추가]
+    applicantUsersPagination.setCurrentPage(1);
+    dashboardApplicantsPagination.setCurrentPage(1); 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     generalSearchTerm, 
     creatorSearchTerm, 
     creatorGenderFilter, 
     generalGenderFilter, 
-    applicantSearchTerm, // ✨ [추가]
-    applicantGenderFilter // ✨ [추가]
+    applicantSearchTerm,    // ✨ 'submitted'
+    applicantGenderFilter,  // ✨ 'submitted'
+    approvedSearchTerm,     // ✨ 'approved'
+    approvedGenderFilter      // ✨ 'approved'
   ]);
 
   const handleSaveSettings = async (newSettings) => {
@@ -183,37 +194,29 @@ export default function AdminPage() {
     }
   };
 
-  // ✨ [추가] 관리자용 아바타 업데이트 핸들러
   const handleUpdateAvatar = async (member, avatarFile) => {
     if (!avatarFile) return;
 
     showToast('새 프로필 사진을 업로드 중입니다...', 'info');
     try {
-        // 1. 이미지 처리
-        const processedImageBlob = await processImageForUpload(avatarFile, 400); // 400px로 리사이즈
-        // 2. Storage 참조 생성
+        const processedImageBlob = await processImageForUpload(avatarFile, 400); 
         const avatarRef = storageRef(storage, `avatars/${member.uid}`);
-        // 3. 파일 업로드
         const snapshot = await uploadBytes(avatarRef, processedImageBlob);
-        // 4. 다운로드 URL 받기
         const newPhotoURL = await getDownloadURL(snapshot.ref);
 
-        // 5. Firestore 'users' 문서 업데이트
         const userDocRef = doc(firestore, 'users', member.uid);
         await setDoc(userDocRef, { photoURL: newPhotoURL }, { merge: true });
 
-        // 6. 로컬 상태 업데이트
         const updatedUser = { ...member, photoURL: newPhotoURL };
         setUsersWithRoles((prevUsers) =>
             prevUsers.map((u) => (u.uid === member.uid ? updatedUser : u))
         );
-        setSelectedUser(updatedUser); // 모달 내부 정보 갱신
+        setSelectedUser(updatedUser);
         
         showToast('프로필 사진이 성공적으로 변경되었습니다.', 'success');
     } catch (error) {
         console.error("Failed to update avatar by admin:", error);
         showToast('사진 변경에 실패했습니다.', 'error');
-        // 에러를 throw하여 모달의 isUploadingAvatar 상태를 false로 돌릴 수 있게 함
         throw error; 
     }
   };
@@ -324,36 +327,46 @@ export default function AdminPage() {
     }
   };
 
-  // ✨ [추가] 신청자 상세정보 모달 핸들러
   const handleViewApplicantDetails = (applicant) => {
     setSelectedApplicant(applicant);
-    setIsApplicantModalOpen(true); // ✨ [수정] 모달 열기
+    setIsApplicantModalOpen(true);
   };
 
-  // ✨ [추가] 신청자 승인 핸들러
   const handleApproveApplicant = async (applicant) => {
-    const applicantRef = doc(firestore, 'applications', applicant.id);
+    const userRef = doc(firestore, 'users', applicant.uid);
     try {
-      await updateDoc(applicantRef, { status: 'approved' });
-      showToast(`${applicant.name}님의 신청을 승인했습니다.`, 'success');
-      // 데이터는 useAdminData의 onSnapshot에 의해 자동으로 갱신됩니다.
+      await updateDoc(userRef, { applicationStatus: 'approved' });
+      showToast(`${applicant.displayName}님의 신청을 승인했습니다.`, 'success');
     } catch (error) {
       showToast('승인 처리에 실패했습니다.', 'error');
       console.error(error);
     }
   };
 
-  // ✨ [추가] 신청자 거절 핸들러
   const handleRejectApplicant = async (applicant) => {
-    const applicantRef = doc(firestore, 'applications', applicant.id);
+    const userRef = doc(firestore, 'users', applicant.uid);
     try {
-      await updateDoc(applicantRef, { status: 'rejected' });
-      showToast(`${applicant.name}님의 신청을 거절했습니다.`, 'info');
+      await updateDoc(userRef, { applicationStatus: 'rejected' });
+      showToast(`${applicant.displayName}님의 신청을 거절했습니다.`, 'info');
     } catch (error) {
       showToast('거절 처리에 실패했습니다.', 'error');
       console.error(error);
     }
   };
+  
+  // ✨ [추가] 승인 취소 핸들러
+  const handleCancelApproval = async (applicant) => {
+    const userRef = doc(firestore, 'users', applicant.uid);
+    try {
+      // 'submitted'로 되돌려 대시보드의 "매칭 신청" 목록으로 이동
+      await updateDoc(userRef, { applicationStatus: 'submitted' });
+      showToast(`${applicant.displayName}님의 승인을 취소했습니다.`, 'info');
+    } catch (error) {
+      showToast('승인 취소에 실패했습니다.', 'error');
+      console.error(error);
+    }
+  };
+
 
   if (isAdminDataLoading || !appSettings) {
     return <div className={styles.container}>Loading...</div>;
@@ -368,19 +381,16 @@ export default function AdminPage() {
           onUpdateRole={handleToggleCreator}
           onUpdateCoins={handleUpdateCoins}
           onUpdateGender={handleUpdateGender}
-          onUpdateAvatar={handleUpdateAvatar} // ✨ [추가]
+          onUpdateAvatar={handleUpdateAvatar}
         />
       )}
 
-      {/* ✨ [추가] 신청자 상세 모달 (TODO: 컴포넌트 생성 필요) */}
-      {/*
       {isApplicantModalOpen && (
         <ApplicantDetailModal
           applicant={selectedApplicant}
           onClose={() => setIsApplicantModalOpen(false)}
         />
       )}
-      */}
 
       <div className={styles.tabNav}>
         <button
@@ -398,15 +408,6 @@ export default function AdminPage() {
           onClick={() => setActiveTab('members')}
         >
           회원 목록
-        </button>
-        {/* ✨ [추가] 신청자 탭 버튼 */}
-        <button
-          className={`${styles.tabButton} ${
-            activeTab === 'applicants' ? styles.active : ''
-          }`}
-          onClick={() => setActiveTab('applicants')}
-        >
-          신청자
         </button>
         <button
           className={`${styles.tabButton} ${
@@ -448,12 +449,30 @@ export default function AdminPage() {
             chargeRequestsPagination={chargeRequestsPagination}
             onApprove={handleApproveRequest}
             onReject={handleRejectRequest}
+            
+            // ✨ [수정] 대시보드에는 'submitted' 목록 전달
+            applicantRequests={dashboardApplicantsPagination.currentUsers}
+            applicantRequestsPagination={dashboardApplicantsPagination}
+            onApproveApplicant={handleApproveApplicant}
+            onRejectApplicant={handleRejectApplicant}
+            onViewApplicantDetails={handleViewApplicantDetails}
           />
         )}
 
         {activeTab === 'members' && (
           <MembersTab
             creatorUsers={filteredCreatorUsers}
+            
+            // ✨ [수정] 'approved' 목록을 전달
+            applicantUsers={applicantUsersPagination.currentUsers}
+            totalApplicantUsers={filteredApprovedUsers} 
+            applicantSearchTerm={approvedSearchTerm}      
+            setApplicantSearchTerm={setApprovedSearchTerm}  
+            applicantGenderFilter={approvedGenderFilter}    
+            setApplicantGenderFilter={setApprovedGenderFilter} 
+            applicantPagination={applicantUsersPagination}
+            onCancelApproval={handleCancelApproval} // ✨ '승인 취소' 핸들러 전달
+            
             generalUsers={generalUsersPagination.currentUsers}
             totalGeneralUsers={filteredGeneralUsers}
             creatorSearchTerm={creatorSearchTerm}
@@ -469,28 +488,6 @@ export default function AdminPage() {
             setCreatorGenderFilter={setCreatorGenderFilter}
             generalGenderFilter={generalGenderFilter}
             setGeneralGenderFilter={setGeneralGenderFilter}
-          />
-        )}
-
-        {/* ✨ [추가] 신청자 탭 컨텐츠 */}
-        {activeTab === 'applicants' && (
-          <ApplicantTab
-            applicants={filteredApplicants}
-            pagination={applicantPagination}
-            searchTerm={applicantSearchTerm}
-            setSearchTerm={setApplicantSearchTerm}
-            genderFilter={applicantGenderFilter}
-            setGenderFilter={setApplicantGenderFilter}
-            onViewDetails={handleViewApplicantDetails}
-            onApprove={handleApproveApplicant}
-            onReject={handleRejectApplicant}
-          />
-        )}
-
-        {isApplicantModalOpen && (
-          <ApplicantDetailModal
-            applicant={selectedApplicant}
-            onClose={() => setIsApplicantModalOpen(false)}
           />
         )}
 

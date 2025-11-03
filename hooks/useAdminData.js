@@ -1,8 +1,9 @@
 // hooks/useAdminData.js
 import { useState, useEffect } from 'react';
 import { ref, onValue, off } from 'firebase/database';
-import { collection, onSnapshot, query, where, orderBy, getDocs } from 'firebase/firestore'; // ✨ [추가]
-import { database, firestore } from '@/lib/firebase'; // ✨ [수정]
+// ✨ [수정] onSnapshot을 import한 것을 확인 (getDocs는 더 이상 필요 없음)
+import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
+import { database, firestore } from '@/lib/firebase';
 import { useUsers } from '@/hooks/useUsers';
 
 export function useAdminData() {
@@ -11,9 +12,13 @@ export function useAdminData() {
   const [callHistory, setCallHistory] = useState([]);
   const [usersWithRoles, setUsersWithRoles] = useState([]);
   const [coinHistory, setCoinHistory] = useState([]);
+  
+  // ✨ [추가] Firestore 유저 정보를 실시간으로 담을 state
+  const [allFirestoreUsers, setAllFirestoreUsers] = useState(null);
+
   const [isLoading, setIsLoading] = useState(true);
   const [chargeRequests, setChargeRequests] = useState([]); 
-  const [applicants, setApplicants] = useState([]); // ✨ [추가] 신청자 목록 state
+  // const [applicants, setApplicants] = useState([]); // (제거됨)
 
   const [dashboardData, setDashboardData] = useState({
     newUsers: [],
@@ -30,7 +35,7 @@ export function useAdminData() {
     return () => off(creatorsRef, 'value', listener);
   }, []);
 
-  // ✨ [수정 시작] Firestore에서 데이터 구독
+  // ✨ [수정] Firestore에서 데이터 실시간 구독
   useEffect(() => {
     const historyQuery = query(collection(firestore, 'call_history'), orderBy('timestamp', 'desc'));
     const unsubscribeHistory = onSnapshot(historyQuery, (snapshot) => {
@@ -50,52 +55,57 @@ export function useAdminData() {
       setChargeRequests(pendingRequests);
     });
 
-    // ✨ [추가] 'applications' 컬렉션에서 'pending' 상태인 신청서 구독 (createdAt 기준으로 오름차순)
-    const applicationsQuery = query(collection(firestore, 'applications'), where('status', '==', 'pending'), orderBy('createdAt', 'asc'));
-    const unsubscribeApplications = onSnapshot(applicationsQuery, (snapshot) => {
-      const pendingApplicants = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setApplicants(pendingApplicants);
+    // ✨ [추가] 'users' 컬렉션 전체를 실시간 구독
+    const usersQuery = query(collection(firestore, 'users'));
+    const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
+      const usersFromDB = {};
+      snapshot.forEach(doc => {
+        usersFromDB[doc.id] = doc.data();
+      });
+      // Firestore 데이터를 state에 저장
+      setAllFirestoreUsers(usersFromDB);
     });
 
     return () => {
       unsubscribeHistory();
       unsubscribeCoinHistory();
       unsubscribeRequests();
-      unsubscribeApplications(); // ✨ [추가] 구독 해제
+      unsubscribeUsers(); // ✨ [추가] 구독 해제
     };
   }, []);
-  // ✨ [수정 끝]
   
-  // 전체 유저 목록에 역할 정보 병합
+  // ✨ [수정] Auth 유저 목록과 Firestore 유저 목록을 병합하는 로직
   useEffect(() => {
-    if (isUsersLoading) return;
-    if (allAuthUsers.length === 0) {
-      setIsLoading(false);
+    // Auth 유저 로딩이 끝났고, Firestore 유저 데이터가 로드되었는지 확인
+    if (isUsersLoading || allFirestoreUsers === null) {
+      setIsLoading(true);
       return;
     }
 
-    // ✨ [수정] Firestore에서 모든 사용자 정보 가져오기
-    getDocs(collection(firestore, 'users')).then((snapshot) => {
-      const usersFromDB = {};
-      snapshot.forEach(doc => {
-        usersFromDB[doc.id] = doc.data();
-      });
-
-      const mergedUsers = allAuthUsers.map(authUser => ({
-        ...authUser,
-        ...usersFromDB[authUser.uid],
-      }));
-      setUsersWithRoles(mergedUsers);
-
-      const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
-      const newUsers = mergedUsers.filter(u => new Date(u.creationTime).getTime() > twentyFourHoursAgo);
-      setDashboardData(prev => ({ ...prev, newUsers }));
-
+    if (allAuthUsers.length === 0) {
       setIsLoading(false);
-    });
-  }, [allAuthUsers, isUsersLoading]);
+      setUsersWithRoles([]);
+      return;
+    }
 
-  // 주간 코인 통계 계산 (기존 로직 대부분 유지)
+    // Auth 유저 목록(allAuthUsers)과 실시간 Firestore 유저 목록(allFirestoreUsers)을 병합
+    const mergedUsers = allAuthUsers.map(authUser => ({
+      ...authUser, // Auth 정보 (uid, email, creationTime)
+      ...(allFirestoreUsers[authUser.uid] || {}), // Firestore 정보 (isCreator, coins, gender, applicationStatus 등)
+    }));
+    
+    setUsersWithRoles(mergedUsers);
+
+    // 대시보드용 신규 유저 필터링
+    const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const newUsers = mergedUsers.filter(u => new Date(u.creationTime).getTime() > twentyFourHoursAgo);
+    setDashboardData(prev => ({ ...prev, newUsers }));
+
+    setIsLoading(false); // 로딩 완료
+
+  }, [allAuthUsers, isUsersLoading, allFirestoreUsers]); // allFirestoreUsers가 변경될 때마다 이 훅이 실행됨
+
+  // ... (주간 코인 통계 useEffect는 변경 없음) ...
   useEffect(() => {
     if (coinHistory.length === 0) return;
 
@@ -153,8 +163,8 @@ export function useAdminData() {
     setUsersWithRoles,
     coinHistory,
     chargeRequests, 
-    applicants, // ✨ [추가]
+    applicants: [], // (사용되지 않으므로 빈 배열)
     dashboardData,
-    isLoading: isUsersLoading || isLoading 
+    isLoading: isLoading // ✨ [수정]
   };
 }

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import initializeLogger from '@/lib/logger';
 import "./globals.css";
 import Toast from '@/components/Toast';
+import AuthInitializer from '@/components/AuthInitializer'; // ✨ [추가]
 
 export default function RootLayout({ children }) {
   const pathname = usePathname();
@@ -36,7 +37,7 @@ export default function RootLayout({ children }) {
 
   return (
     <html lang="en">
-      {/* ✨ [추가] PWA 관련 meta 태그 및 link 태그 */}
+      {/* ✨ [수정] PWA 관련 meta 태그 및 link 태그 */}
       <head>
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
@@ -52,10 +53,9 @@ export default function RootLayout({ children }) {
         <meta name="apple-mobile-web-app-title" content="취향만남" />
       </head>
       <body>
+        <AuthInitializer /> {/* ✨ [추가] 앱 최상단에서 Auth 리스너 실행 */}
         {getLayout()}
       </body>
     </html>
   );
 }
-
-//롤백

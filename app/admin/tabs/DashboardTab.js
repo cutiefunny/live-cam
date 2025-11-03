@@ -42,6 +42,14 @@ const formatTimeAgo = (isoString) => {
     return `${diffInHours}시간 전`;
 };
 
+// ✨ [추가] 성별 포맷팅 헬퍼
+const formatGender = (gender) => {
+  if (gender === 'male') return '남성';
+  if (gender === 'female') return '여성';
+  if (gender === 'other') return '기타';
+  return '미설정';
+};
+
 
 const DashboardTab = ({ 
   onlineCreators, 
@@ -51,6 +59,12 @@ const DashboardTab = ({
   chargeRequestsPagination,
   onApprove,
   onReject,
+  // ✨ [추가] 매칭 신청 회원 관련 props
+  applicantRequests,
+  applicantRequestsPagination,
+  onApproveApplicant,
+  onRejectApplicant,
+  onViewApplicantDetails,
 }) => {
 
   const chartOptions = {
@@ -75,6 +89,58 @@ const DashboardTab = ({
 
   return (
     <>
+      {/* ✨ [신규] 매칭 신청 회원 섹션 */}
+      {applicantRequests && applicantRequests.length > 0 && (
+        <div className={styles.section}>
+          <h2 className={styles.sectionTitle}>
+            매칭 신청 회원 ({applicantRequests.length})
+          </h2>
+          <div className={styles.tableContainer}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>성별</th>
+                  <th>출생년도</th>
+                  <th>Request Date</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {applicantRequests.map((req) => (
+                  <tr key={req.uid}>
+                    <td>{req.displayName} ({req.email})</td>
+                    <td>{formatGender(req.gender)}</td>
+                    <td>{req.birthYear}</td>
+                    {/* users 문서의 applicationTimestamp 필드 사용 */}
+                    <td>{req.applicationTimestamp?.toDate().toLocaleString() ?? 'N/A'}</td>
+                    <td>
+                      <div className={styles.actionButtons}>
+                        <button 
+                          onClick={() => onViewApplicantDetails(req)} 
+                          className={styles.actionButton} 
+                          style={{ borderColor: '#2563eb', color: '#a5b4fc', width: 'auto' }}
+                        >
+                          상세보기
+                        </button>
+                        <button onClick={() => onApproveApplicant(req)} className={styles.approveButton}>
+                          승인
+                        </button>
+                        <button onClick={() => onRejectApplicant(req)} className={styles.rejectButton}>
+                          거절
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Pagination {...applicantRequestsPagination} />
+        </div>
+      )}
+
+      {/* --- 기존 코인 충전 요청 섹션 --- */}
       {dashboardData.chargeRequests && dashboardData.chargeRequests.length > 0 && (
         <div className={styles.section}>
           <h2 className={styles.sectionTitle}>
@@ -97,7 +163,8 @@ const DashboardTab = ({
                     <td>{req.userName} ({req.userEmail})</td>
                     <td>💰 {req.amount}</td>
                     <td>{req.price}</td>
-                    <td>{new Date(req.timestamp).toLocaleString()}</td>
+                    {/* charge_requests 문서의 timestamp 필드 사용 */}
+                    <td>{req.timestamp?.toDate().toLocaleString() ?? 'N/A'}</td>
                     <td>
                       <div className={styles.actionButtons}>
                         <button onClick={() => onApprove(req)} className={styles.approveButton}>
@@ -117,6 +184,7 @@ const DashboardTab = ({
         </div>
       )}
 
+      {/* --- 기존 온라인 크리에이터 섹션 --- */}
       <div className={styles.section}>
         <h2 className={styles.sectionTitle}>온라인 크리에이터 ({onlineCreators.length})</h2>
         <div className={styles.tableContainer}>
@@ -144,6 +212,7 @@ const DashboardTab = ({
         <Pagination {...onlineCreatorsPagination} />
       </div>
 
+      {/* --- 기존 대시보드 그리드 (신규가입/차트) --- */}
       <div className={styles.dashboardGrid}>
         <div className={styles.gridItem}>
             <h3 className={styles.sectionTitle}>신규 가입 회원</h3>

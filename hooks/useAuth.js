@@ -2,13 +2,13 @@
 import { useEffect } from 'react';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as firebaseSignOut } from "firebase/auth";
 import { ref, remove, get } from 'firebase/database';
-import { doc, onSnapshot } from 'firebase/firestore'; // ✨ [수정]
+import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, database, firestore } from '@/lib/firebase';
 import useAppStore from '@/store/useAppStore';
 
 export function useAuth() {
-  // ✨ [수정] setUserGender 추가
-  const { setUser, setIsCreator, setIsAuthLoading, setFollowing, setUserGender } = useAppStore();
+  // ✨ [수정] setApplicationStatus 추가
+  const { setUser, setIsCreator, setIsAuthLoading, setFollowing, setUserGender, setApplicationStatus } = useAppStore();
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -23,11 +23,14 @@ export function useAuth() {
             const userData = doc.data();
             setIsCreator(userData.isCreator || false);
             setFollowing(userData.following || []);
-            setUserGender(userData.gender || null); // ✨ [추가]
+            setUserGender(userData.gender || null);
+            setApplicationStatus(userData.applicationStatus || null); // ✨ [추가]
           } else {
+            // Firestore에 유저 문서가 없는 경우
             setIsCreator(false);
             setFollowing([]);
-            setUserGender(null); // ✨ [추가]
+            setUserGender(null);
+            setApplicationStatus(null); // ✨ [추가]
           }
         });
 
@@ -39,12 +42,14 @@ export function useAuth() {
         // User is logged out
         setIsCreator(false);
         setFollowing([]);
-        setUserGender(null); // ✨ [추가]
+        setUserGender(null);
+        setApplicationStatus(null); // ✨ [추가]
       }
     });
 
     return () => unsubscribeAuth();
-  }, [setUser, setIsAuthLoading, setIsCreator, setFollowing, setUserGender]); // ✨ [수정] 의존성 배열
+    // ✨ [수정] 의존성 배열에 setApplicationStatus 추가
+  }, [setUser, setIsAuthLoading, setIsCreator, setFollowing, setUserGender, setApplicationStatus]);
 
   const signIn = async () => {
     const provider = new GoogleAuthProvider();

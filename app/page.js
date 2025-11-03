@@ -1,9 +1,8 @@
 // app/page.js
 'use client';
-// ✨ [수정] useState, useMemo 추가
 import { Suspense, useEffect, useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth } from '@/hooks/useAuth'; // ✨ [수정] 주석 해제
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useCoin } from '@/hooks/useCoin';
 import useAppStore from '@/store/useAppStore';
@@ -43,12 +42,13 @@ function RatingTrigger() {
 }
 
 export default function Home() {
-  const { signIn, signOut } = useAuth();
+  const { signIn, signOut } = useAuth(); // ✨ 이 줄에서 useAuth()가 필요합니다.
   const { updateUserProfile } = useUserProfile();
   const { requestCoinCharge } = useCoin();
+  const router = useRouter(); 
 
   const {
-    user, isAuthLoading, userCoins, userGender, 
+    user, isAuthLoading, userCoins, userGender, applicationStatus, isCreator,
     isProfileModalOpen, openProfileModal, closeProfileModal,
     isCoinModalOpen, openCoinModal, closeCoinModal,
   } = useAppStore();
@@ -56,6 +56,14 @@ export default function Home() {
   const { matchingUsers, isLoading: isMatchingLoading } = useMatchingUsers(userGender);
   
   const [fortune, setFortune] = useState('오늘의 연애운을 불러오는 중...');
+
+  // 크리에이터 리디렉션 useEffect
+  useEffect(() => {
+    // 로딩이 끝났고, 유저가 존재하며, 크리에이터일 경우
+    if (!isAuthLoading && user && isCreator) {
+      router.replace('/creator');
+    }
+  }, [isAuthLoading, user, isCreator, router]);
 
   useEffect(() => {
     if (user) {
@@ -87,7 +95,6 @@ export default function Home() {
     }
   }, [user]);
 
-  // ✨ [추가] fortune 텍스트를 가공하여 중간에 줄바꿈 추가
   const formattedFortune = useMemo(() => {
     // 로딩 또는 에러 메시지는 가공하지 않음
     if (fortune.includes('...') || fortune.includes('실패') || fortune.includes('없습니다')) {
@@ -112,15 +119,16 @@ export default function Home() {
       // 띄어쓰기가 없는 매우 긴 단어인 경우, 그냥 중간을 자릅니다.
       return fortune.substring(0, middleIndex) + '\n' + fortune.substring(middleIndex);
     }
-  }, [fortune]); // fortune 상태가 변경될 때만 재계산
+  }, [fortune]);
 
-  if (isAuthLoading) {
+  // 로딩 중이거나, 크리에이터라서 리디렉션 대기 중일 때 로딩 표시
+  if (isAuthLoading || (user && isCreator)) {
     return <div className={styles.main}><div>Loading...</div></div>;
   }
 
-  // 로그인 상태일 때 매칭 UI 렌더링
+  // 로그인 상태일 때 (크리에이터가 아닌) 매칭 UI 렌더링
   if (user) {
-    const needsGenderSetup = !userGender; // 성별 미설정 여부
+    const needsApproval = applicationStatus !== 'approved';
 
     return (
       <>
@@ -136,26 +144,25 @@ export default function Home() {
         />
         <main className={styles.main}>
 
-          {/* ✨ [수정] 가공된 formattedFortune 변수를 사용 */}
           <div className={styles.fortuneContainer}>
             <h3 className={styles.fortuneTitle}>💖 오늘의 연애운</h3>
             <p className={styles.fortuneContent}>{formattedFortune}</p>
           </div>
           
           <div className={styles.matchingContainer}>
-            {needsGenderSetup && (
+            {needsApproval && (
               <div className={styles.genderCtaOverlay}>
                 <p>만남을 신청하고<br/>추천 상대를 확인해보세요!</p>
                 <a
                   className={styles.ctaButton}
                   href="/apply"
                 >
-                  만남 신청하기
+                  {applicationStatus === 'submitted' ? '승인 대기 중' : '만남 신청하기'}
                 </a>
               </div>
             )}
 
-            <div className={needsGenderSetup ? styles.blurContainer : ''}>
+            <div className={needsApproval ? styles.blurContainer : ''}>
               {isMatchingLoading ? (
                 <div className={styles.swiperContainer} style={{display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
                   <p>사용자 찾는 중...</p>
@@ -190,9 +197,10 @@ export default function Home() {
           <button 
             className={styles.createButton} 
             style={{ width: '100%', maxWidth: '400px', marginTop: '2rem' }} 
-            disabled
+            disabled={needsApproval} // 'approved' 상태가 아니면 disabled
+            onClick={() => router.push('/creator')} // 클릭 시 /creator로 이동
           >
-            매칭 시작 (준비 중)
+            {needsApproval ? '매칭 시작 (준비 중)' : '매칭 시작'}
           </button>
         </main>
 

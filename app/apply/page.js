@@ -1,15 +1,19 @@
 // app/apply/page.js
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import useAppStore from '@/store/useAppStore';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 import styles from './Apply.module.css';
 
 export default function ApplyPage() {
   const router = useRouter();
+  
+  // Zustand selector (개별 분리)
+  const user = useAppStore((state) => state.user);
+  const isAuthLoading = useAppStore((state) => state.isAuthLoading);
   const showToast = useAppStore((state) => state.showToast);
   
   // 폼 상태
@@ -34,6 +38,31 @@ export default function ApplyPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // 폼 초기화 추적
+  const [isFormInitialized, setIsFormInitialized] = useState(false);
+  // 리디렉션 실행 추적
+  const hasCheckedAuth = useRef(false);
+
+
+  // 1. 인증 상태 확인 및 리디렉션
+  useEffect(() => {
+    // 로딩이 끝났고, 유저가 없고, 아직 인증 확인을 실행하지 않았다면
+    if (!isAuthLoading && !user && !hasCheckedAuth.current) {
+      hasCheckedAuth.current = true; 
+      showToast('로그인이 필요한 서비스입니다.', 'error');
+      router.replace('/');
+    }
+  }, [user, isAuthLoading, router, showToast]);
+
+  // 2. 유저 정보로 폼 초기화 (user 객체가 유효할 때 1회 실행)
+  useEffect(() => {
+    if (user && !isFormInitialized) {
+      setFormData((prev) => ({ ...prev, name: user.displayName || '' }));
+      setIsFormInitialized(true); 
+    }
+  }, [user, isFormInitialized]); 
+
+  // 핸들러 (변경 없음)
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -46,6 +75,12 @@ export default function ApplyPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (!user) {
+      setError('로그인 정보가 없습니다. 다시 로그인해주세요.');
+      return;
+    }
+
     setIsLoading(true);
 
     // 1. 유효성 검사
@@ -60,35 +95,63 @@ export default function ApplyPage() {
       return;
     }
 
-    // 2. 비회원 신청 데이터 전송 로직 (예: Firestore 'applications' 컬렉션에 저장)
+    // 2. 'users' 컬렉션에 데이터 저장
     try {
-      console.log('매칭 신청 데이터:', { ...formData, agreeContact, agreeReview });
-      
-      // TODO: Firestore에 신청서 전송 로직 구현
-      const docRef = await addDoc(collection(firestore, 'applications'), {
+      const userDocRef = doc(firestore, 'users', user.uid);
+      const dataToSave = {
         ...formData,
         agreeContact,
         agreeReview,
-        status: 'pending', // '검토중' 상태
-        createdAt: serverTimestamp(),
-      });
-      
-      console.log('Application submitted with ID: ', docRef.id);
+        applicationStatus: 'submitted', // '신청 완료' 상태
+        applicationTimestamp: serverTimestamp(),
+      };
 
+      await setDoc(userDocRef, dataToSave, { merge: true });
       showToast('매칭 신청이 성공적으로 접수되었습니다.', 'success');
       router.push('/'); // 성공 시 메인 페이지로 이동
 
     } catch (err) {
-      console.error('Error submitting application:', err);
+      console.error('Error submitting application to user doc:', err);
       setError('신청서 제출에 실패했습니다. 다시 시도해주세요.');
       setIsLoading(false);
     }
   };
+  
+  // --- 렌더링 로직 ---
 
+  // 1. 인증 로딩 중일 때
+  if (isAuthLoading) {
+    return (
+      <main className={styles.main}>
+        <div className={styles.container}>
+          <p>Loading... (Auth check)</p>
+        </div>
+      </main>
+    );
+  }
+
+  // 2. 인증 완료되었으나 로그아웃 상태일 때
+  if (!user) {
+    // (useEffect 1번이 리디렉션을 처리할 것이므로, 빈 화면을 렌더링)
+    return null;
+  }
+  
+  // 3. 인증 완료, 로그인 상태, 폼 초기화 전일 때
+  if (!isFormInitialized) {
+    return (
+      <main className={styles.main}>
+        <div className={styles.container}>
+          <p>Loading... (Initializing form)</p>
+        </div>
+      </main>
+    );
+  }
+  
+  // 4. 모든 조건 만족 시 (폼 렌더링)
   return (
     <main className={styles.main}>
       <div className={styles.container}>
-        <h1 className={styles.title}>취향만남 소개팅 신청</h1>
+        <h1 className={styles.title}>취향만남 매칭 신청</h1>
         <p className={styles.description}>
           조건이 아닌 결로 연결되는 진짜 만남을 준비해요
         </p>
@@ -96,7 +159,7 @@ export default function ApplyPage() {
           {/* --- 기본 정보 --- */}
           <div className={styles.inputGroup}>
             <label htmlFor="name">이름</label>
-            <input type="text" id="name" name="name" value={formData.name} onChange={handleChange} placeholder="이름을 입력해주세요" className={styles.input} />
+            <input type="text" id="name" name="name" value={formData.name} onChange={handleChange} placeholder="이름을 입력해주세요" className={styles.input} disabled />
           </div>
           <div className={styles.inputGroup}>
             <label htmlFor="contact">연락처</label>
